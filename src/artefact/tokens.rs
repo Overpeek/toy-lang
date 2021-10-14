@@ -1,3 +1,33 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operator {
+    /// +
+    Add,
+
+    /// -
+    Sub,
+
+    /// *
+    Mul,
+
+    /// /
+    Div,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comment {
+    /// `/* ... */`
+    ///
+    /// block comment, anything inside should be ignored
+    Block,
+
+    /// `// ... '\n|EOF'`
+    ///
+    /// inline comment, anything inside should be ignored
+    /// ends with newline or end of file
+    Inline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delimiter {
     ///  `( ... )`
     ///
@@ -19,40 +49,78 @@ pub enum Delimiter {
     ///
     /// for arrays
     Brackets,
-    /* /// `| ... |`
+
+    /// `| ... |`
     ///
     /// takes the absolute value or something else in the future
-    Absolute, */
+    // Absolute,
+
+    /// `/* ... */` or `//`
+    ///
+    /// comments, anything inside should be ignored
+    Comment(Comment),
 }
 
-pub struct Group<'s> {
-    delimiter: Delimiter,
-    tokens: Tokens<'s>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
 }
 
-pub enum Token<'s> {
-    Ident(&'s str),
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    /// keywords or names
+    ///
+    /// e.g. `fn`
+    Ident(String),
+
+    /// integer literals
+    ///
+    /// e.g. `42`, `-9`
     LitInt(isize),
-    LitStr(&'s str),
-    Group(Group<'s>),
 
-    __GroupDelimiter(Delimiter),
+    /// float literals
+    ///
+    /// e.g. `4.2`, `-9.0`
+    LitFloat(f64),
 
-    /// `/*`
-    __BlockCommentBegin,
+    /// string literals
+    ///
+    /// e.g. `"text"`
+    LitStr(String),
 
-    /// `*/`
-    __BlockCommentEnd,
+    /// character literals
+    ///
+    /// e.g. `'c'`, `' '`, `'\n'`
+    LitChar(char),
 
-    /// `//`
-    __InlineCommentBegin,
+    /// group begin or end
+    Group(Delimiter, Side),
 
-    /// `'\n'`
-    __InlineCommentEnd,
+    /// math operators
+    Operator(Operator),
+
+    /// '.'
+    Dot,
+
+    /// ','
+    Comma,
+
+    /// `->`
+    Arrow,
+
+    /// `/*` or `*/`
+    BlockComment(Side),
+
+    /// `//` or `'\n'`
+    InlineComment(Side),
+
+    /// new line
+    /// '\n'
+    LF,
+
+    /// end of file
+    EOF,
 }
 
-/* pub struct Tokens {
-    tokens:
-} */
-
-pub type Tokens<'s> = Vec<Token<'s>>;
+pub type Tokens = Vec<Token>;
