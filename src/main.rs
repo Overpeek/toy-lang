@@ -1,27 +1,24 @@
+use colorful::Colorful;
 use parse::lexer::run_lexer;
+use std::io::{stdin, stdout, Write};
 
 pub mod artefact;
 pub mod parse;
 
-const CODE: &str = r#"
-
-/* comment */
-
-// comment
-
-fn main() -> f64 {
-    3.0 + 0.141
-}
-
-"#;
-
 fn main() {
-    match run_lexer(CODE) {
-        Ok(tokens) => {
-            println!("got lexer tokens {:?}", tokens)
+    loop {
+        let mut buf = String::new();
+        print!("{} > ", env!("CARGO_CRATE_NAME"));
+        stdout().flush().unwrap();
+        stdin().read_line(&mut buf).unwrap();
+
+        match run_lexer(&buf) {
+            Ok(tokens) => {
+                println!("lexer got tokens {:?}", tokens)
+            }
+            Err(err) => {
+                println!("{}: {}", "error".red(), err)
+            }
         }
-        Err(err) => {
-            println!("got lexer error: {:?}", err)
-        }
-    };
+    }
 }

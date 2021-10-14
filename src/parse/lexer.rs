@@ -1,254 +1,294 @@
 use crate::artefact::tokens::{Delimiter, Operator, Side, Token, Tokens};
-use std::{
-    iter::Peekable,
-    str::{CharIndices, FromStr},
-};
+use std::{fmt::Display, str::FromStr};
 
-type Iter<'a> = Peekable<CharIndices<'a>>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorPosition {
+    file_path: Option<String>,
+    code_row: String,
+    row: usize,
+    column: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    InvalidFloat(<f64 as FromStr>::Err),
-    InvalidInt(<isize as FromStr>::Err),
-    UnexpectedEOF,
-    InvalidIdentifier,
-    InvalidCharacter(char),
+    UnexpectedEOF(ErrorPosition, &'static str),
+    InvalidIdentifier(ErrorPosition, &'static str),
+    InvalidCharacter(ErrorPosition, char),
+
+    InvalidLitFloat(ErrorPosition, <f64 as FromStr>::Err),
+    InvalidLitInt(ErrorPosition, <isize as FromStr>::Err),
+    InvalidLitChar(ErrorPosition, &'static str),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/* impl From<<f64 as FromStr>::Err> for Error {
-    fn from(e: <f64 as FromStr>::Err) -> Self {
-        Self::InvalidFloat(e)
+impl Display for ErrorPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let file_path = match self.file_path.as_ref() {
+            Some(file_path) => &file_path,
+            None => "<stdin>",
+        };
+        write!(
+            f,
+            "  at {}:{}:{}\n\n  {}\n  {}^ ",
+            file_path,
+            self.row,
+            self.column,
+            self.code_row,
+            " ".repeat(self.column)
+        )
     }
-} */
-
-pub fn run_lexer(code: &str) -> Result<Tokens> {
-    let mut tokens = Tokens::new();
-    let mut iter = code.char_indices().peekable();
-
-    loop {
-        let token = advance(code, &mut iter)?;
-        let is_eof = token == Token::EOF;
-
-        tokens.push(token);
-
-        if is_eof {
-            break;
-        }
-    }
-
-    Ok(tokens)
 }
 
-fn advance(code: &str, iter: &mut Iter) -> Result<Token> {
-    loop {
-        dbg!(iter.peek());
-        match iter.peek() {
-            Some(&(_, '.')) => {
-                let _ = iter.next();
-                break Ok(Token::Dot);
-            }
-            Some(&(_, ',')) => {
-                let _ = iter.next();
-                break Ok(Token::Comma);
-            }
-            Some(&(_, '+')) => {
-                let _ = iter.next();
-                break Ok(Token::Operator(Operator::Add));
-            }
-            Some(&(_, '-')) => {
-                let _ = iter.next().unwrap();
-                let next = iter.peek().map(|&(_, c)| c);
-                match next {
-                    Some('>') => {
-                        let _ = iter.next();
-                        break Ok(Token::Arrow);
-                    }
-                    _ => {
-                        break Ok(Token::Operator(Operator::Sub));
-                    }
-                }
-            }
-            Some(&(_, '*')) => {
-                let _ = iter.next();
-                break Ok(Token::Operator(Operator::Mul));
-            }
-            Some(&(_, '/')) => {
-                let _ = iter.next();
-                let next = iter.peek().map(|&(_, c)| c);
-                match next {
-                    Some('*') => {
-                        let _ = iter.next();
-                        break Ok(Token::BlockComment(Side::Left));
-                    }
-                    Some('/') => {
-                        let _ = iter.next();
-                        break Ok(Token::InlineComment(Side::Left));
-                    }
-                    _ => {
-                        break Ok(Token::Operator(Operator::Div));
-                    }
-                }
-            }
-            Some(&(_, '(')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Parentheses, Side::Left));
-            }
-            Some(&(_, ')')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Parentheses, Side::Right));
-            }
-            Some(&(_, '{')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Braces, Side::Left));
-            }
-            Some(&(_, '}')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Braces, Side::Right));
-            }
-            Some(&(_, '[')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Brackets, Side::Left));
-            }
-            Some(&(_, ']')) => {
-                let _ = iter.next();
-                break Ok(Token::Group(Delimiter::Brackets, Side::Right));
-            }
-            Some(&(_, '"')) => {
-                break Ok(Token::LitStr(
-                    collect_delimited(code, iter, '"')?.to_string(),
-                ));
-            }
-            Some(&(_, '\'')) => {
-                todo!(
-                    "lit char not implemented but the output was: {:?}",
-                    collect_delimited(code, iter, '\'')
-                );
-            }
-            Some(&(_, c)) => {
-                // skip whitespace
-                if c.is_whitespace() {
-                    let _ = iter.next();
-                    continue;
-                }
-
-                if c.is_digit(10) {
-                    break collect_digit(code, iter);
-                } else if c.is_alphabetic() {
-                    break collect_ident(code, iter);
-                } else {
-                    break Err(Error::InvalidCharacter(c));
-                }
-            }
-            None => {
-                let _ = iter.next();
-                break Ok(Token::EOF);
-            }
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnexpectedEOF(pos, err) => write!(f, "Unexpected end of file\n{}{}", pos, err),
+            Self::InvalidIdentifier(pos, err) => write!(f, "Invalid identifier\n{}{}", pos, err),
+            Self::InvalidCharacter(pos, c) => write!(f, "Invalid character {}\n{}", c, pos),
+            Self::InvalidLitFloat(pos, err) => write!(f, "Invalid float literal: {}\n{}", err, pos),
+            Self::InvalidLitInt(pos, err) => write!(f, "Invalid int literal: {}\n{}", err, pos),
+            Self::InvalidLitChar(pos, err) => write!(f, "Invalid char literal: {}\n{}", err, pos),
         }
     }
 }
 
-fn collect_digit(code: &str, iter: &mut Iter) -> Result<Token> {
-    let mut dot = false;
-    let (first, _) = *iter.peek().unwrap();
-    let mut last = first;
+struct LexerPosition {
+    index: usize,
 
-    loop {
-        match iter.peek() {
-            Some(&(i, c)) => {
-                let is_digit = c.is_digit(10);
-                let is_dot = c == '.';
-                // let next_is_digit = next_is_digit(iter);
+    row: usize,
+    row_index: usize,
+    column: usize,
+}
 
-                // digit ends when there are no more numbers or dots
-                // and if the char after dot is not a digit
-                if !is_digit && !is_dot {
-                    break;
-                }
-                /* if (!is_digit && !is_dot) || (is_dot && !next_is_digit) {
-                    println!(
-                        "complicated break: {} {} {}",
-                        is_digit, is_dot, next_is_digit
-                    );
-                    break;
-                } */
+impl LexerPosition {
+    fn new() -> Self {
+        Self {
+            index: 0,
+            row: 0,
+            row_index: 0,
+            column: 0,
+        }
+    }
 
-                // first dot means that it is a float
-                // second dot ends the digit
-                if dot && is_dot {
-                    break;
-                } else if is_dot {
-                    dot = true;
-                }
+    fn new_line(&mut self) {
+        self.index += 1;
+        self.row += 1;
+        self.row_index = self.index;
+        self.column = 0;
+    }
 
-                let _ = iter.next();
-                last = i + c.len_utf8();
-            }
+    fn advance(&mut self, n: usize) {
+        self.index += n;
+        self.column += n;
+    }
+}
+
+struct Lexer {
+    position: LexerPosition,
+    code: Vec<char>,
+    tokens: Tokens,
+}
+
+impl Lexer {
+    fn new(code: &str) -> Self {
+        Self {
+            position: LexerPosition::new(),
+            code: code.chars().collect(),
+            tokens: Tokens::new(),
+        }
+    }
+
+    fn run(mut self) -> Result<Tokens> {
+        while self.advance()? {}
+        Ok(self.tokens)
+    }
+
+    fn advance(&mut self) -> Result<bool> {
+        self.process()?;
+        Ok((0..self.code.len()).contains(&self.position.index))
+    }
+
+    fn get_prev(&self) -> Option<char> {
+        if self.position.index == 0 {
+            None
+        } else {
+            Some(self.code[self.position.index - 1])
+        }
+    }
+
+    fn get_this(&self) -> char {
+        self.code[self.position.index]
+    }
+
+    fn get_next(&self) -> Option<char> {
+        self.code.get(self.position.index + 1).map(|c| *c)
+    }
+
+    fn get_chars(&self) -> (Option<char>, char, Option<char>) {
+        (self.get_prev(), self.get_this(), self.get_next())
+    }
+
+    fn make_error_pos(&self) -> ErrorPosition {
+        let code_row = self.code[self.position.row_index..]
+            .into_iter()
+            .take_while(|&&c| c != '\n')
+            .collect();
+
+        ErrorPosition {
+            code_row,
+            row: self.position.row,
+            column: self.position.column,
+            file_path: None, // TODO:
+        }
+    }
+
+    #[rustfmt::skip]
+    fn process(&mut self) -> Result<()> {
+        let chars = self.get_chars();
+
+        let advance = match chars {
+            // skip all whitespaces
+            (_, '\n', _) =>         { self.position.new_line(); 0 }
+            (_, c, _) if c.is_whitespace()
+                =>                  { 1 },
+            (_, '.', _) =>          { self.tokens.push(Token::Dot); 1 },
+            (_, ',', _) =>          { self.tokens.push(Token::Comma); 1 },
+            (_, '+', _) =>          { self.tokens.push(Token::Operator(Operator::Add)); 1 },
+            (_, '-', Some('>')) =>  { self.tokens.push(Token::Arrow); 2 },
+            (_, '-', _) =>          { self.tokens.push(Token::Operator(Operator::Sub)); 1 },
+            (_, '*', _) =>          { self.tokens.push(Token::Operator(Operator::Mul)); 1 },
+            (_, '/', Some('/')) =>  { self.tokens.push(Token::InlineComment(Side::Left)); 2 }, // TODO: Side::Right
+            (_, '/', Some('*')) =>  { self.tokens.push(Token::BlockComment(Side::Left)); 2 },  // TODO: Side::Right
+            (_, '/', _) =>          { self.tokens.push(Token::Operator(Operator::Div)); 1 },
+            (_, '(', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Left)); 1 },
+            (_, ')', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Right)); 1 },
+            (_, '{', _) =>          { self.tokens.push(Token::Group(Delimiter::Braces, Side::Left)); 1 },
+            (_, '}', _) =>          { self.tokens.push(Token::Group(Delimiter::Braces, Side::Right)); 1 },
+            (_, '[', _) =>          { self.tokens.push(Token::Group(Delimiter::Brackets, Side::Left)); 1 },
+            (_, ']', _) =>          { self.tokens.push(Token::Group(Delimiter::Brackets, Side::Right)); 1 },
+            (_, '\"', _) =>         { self.lit_str()? },
+            (_, '\'', _) =>         { self.lit_char()? },
+            (_, '0'..='9', _) =>    { self.lit_num()? },
+            other => return Err(Error::InvalidCharacter(self.make_error_pos(), other.1)),
+        };
+        self.position.advance(advance);
+
+        Ok(())
+    }
+
+    fn lit_str(&mut self) -> Result<usize> {
+        let first = self.position.index;
+        let last = match self.code[first + 1..]
+            .iter()
+            .enumerate()
+            .find(|&(_, &c)| c == '\"')
+        {
+            Some((last, _)) => last,
             None => {
+                return Err(Error::UnexpectedEOF(
+                    self.make_error_pos(),
+                    "while waiting for the tailing \"",
+                ))
+            }
+        };
+
+        // TODO: escapes
+
+        self.tokens.push(Token::LitStr(
+            self.code[first + 1..first + 1 + last].into_iter().collect(),
+        ));
+
+        Ok(first + 3 + last - self.position.index)
+    }
+
+    fn lit_char(&mut self) -> Result<usize> {
+        let first = self.position.index;
+        let last = match self.code[first + 1..]
+            .iter()
+            .enumerate()
+            .find(|&(_, &c)| c == '\'')
+        {
+            Some((last, _)) => last,
+            None => {
+                return Err(Error::UnexpectedEOF(
+                    self.make_error_pos(),
+                    "while waiting for the tailing '",
+                ))
+            }
+        };
+
+        if last != 1 {
+            return Err(Error::InvalidLitChar(
+                self.make_error_pos(),
+                "a char has to have exactly one codepoint",
+            ));
+        }
+
+        // TODO: escapes
+
+        self.tokens.push(Token::LitChar(self.code[first + 1]));
+
+        Ok(first + 3 + last - self.position.index)
+    }
+
+    fn parse_radix(&mut self) -> (u32, usize) {
+        match self.get_chars() {
+            (_, '0', Some('x')) => (16, 2),
+            (_, '0', Some('o')) => (8, 2),
+            (_, '0', Some('b')) => (2, 2),
+            _ => (10, 0),
+        }
+    }
+
+    fn lit_num(&mut self) -> Result<usize> {
+        let (radix, mut offset) = self.parse_radix();
+        let mut dot = false;
+
+        loop {
+            let c = self.code[self.position.index + offset];
+            let is_dot = c == '.';
+            let is_digit = c.is_digit(radix);
+
+            // digit ends when there are no more numbers or dots
+            // and if the char after dot is not a digit
+            if !is_dot && !is_digit {
                 break;
             }
-        }
-    }
 
-    let digit_str = &code[first..last];
-    let token = if dot {
-        Token::LitFloat(
-            digit_str
-                .parse()
-                .or_else(|err| Err(Error::InvalidFloat(err)))?,
-        )
-    } else {
-        Token::LitInt(
-            digit_str
-                .parse()
-                .or_else(|err| Err(Error::InvalidInt(err)))?,
-        )
-    };
-
-    Ok(token)
-}
-
-fn collect_delimited<'s>(code: &'s str, iter: &mut Iter, delimiter: char) -> Result<&'s str> {
-    // consume the first delimiter
-    let (_, first_c) = iter.next().unwrap();
-    let (first, _) = *iter.peek().unwrap();
-
-    assert!(first_c == delimiter);
-
-    let last = match iter.find(|&(_, c)| c == delimiter) {
-        Some((last, d)) => {
-            assert!(d == delimiter);
-            last
-        }
-        None => return Err(Error::UnexpectedEOF),
-    };
-
-    Ok(&code[first..last])
-}
-
-fn collect_ident(code: &str, iter: &mut Iter) -> Result<Token> {
-    let (first, first_c) = iter.next().unwrap();
-    let mut last = first;
-
-    // consume the first delimiter
-    if !first_c.is_alphabetic() {
-        return Err(Error::InvalidIdentifier);
-    }
-
-    loop {
-        match iter.peek() {
-            Some((i, c)) => {
-                last = *i;
-                if !c.is_alphanumeric() {
-                    break;
-                } else {
-                    let _ = iter.next();
-                }
+            // first dot means that it is a float
+            // second dot ends the digit
+            if dot && is_dot {
+                break;
+            } else if is_dot {
+                dot = true;
             }
-            None => break,
-        }
-    }
 
-    Ok(Token::Ident(code[first..last].to_string()))
+            offset += 1;
+        }
+
+        let digit_str = self.code[self.position.index..self.position.index + offset]
+            .into_iter()
+            .collect::<String>();
+
+        self.tokens.push(if dot {
+            Token::LitFloat(
+                digit_str
+                    .parse()
+                    .or_else(|err| Err(Error::InvalidLitFloat(self.make_error_pos(), err)))?,
+            )
+        } else {
+            Token::LitInt(
+                digit_str
+                    .parse()
+                    .or_else(|err| Err(Error::InvalidLitInt(self.make_error_pos(), err)))?,
+            )
+        });
+
+        Ok(offset)
+    }
+}
+
+pub fn run_lexer(code: &str) -> Result<Tokens> {
+    Lexer::new(code).run()
 }
