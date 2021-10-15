@@ -109,12 +109,6 @@ pub enum Token {
     /// `->`
     Arrow,
 
-    /// `/*` or `*/`
-    BlockComment(Side),
-
-    /// `//` or `'\n'`
-    InlineComment(Side),
-
     /// new line
     /// '\n'
     LF,

@@ -158,8 +158,8 @@ impl Lexer {
             (_, '-', Some('>')) =>  { self.tokens.push(Token::Arrow); 2 },
             (_, '-', _) =>          { self.tokens.push(Token::Operator(Operator::Sub)); 1 },
             (_, '*', _) =>          { self.tokens.push(Token::Operator(Operator::Mul)); 1 },
-            (_, '/', Some('/')) =>  { self.tokens.push(Token::InlineComment(Side::Left)); 2 }, // TODO: Side::Right
-            (_, '/', Some('*')) =>  { self.tokens.push(Token::BlockComment(Side::Left)); 2 },  // TODO: Side::Right
+            (_, '/', Some('/')) =>  { self.inline_comment()? },
+            (_, '/', Some('*')) =>  { self.block_comment()? },
             (_, '/', _) =>          { self.tokens.push(Token::Operator(Operator::Div)); 1 },
             (_, '(', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Left)); 1 },
             (_, ')', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Right)); 1 },
@@ -177,14 +177,56 @@ impl Lexer {
         Ok(())
     }
 
-    fn lit_str(&mut self) -> Result<usize> {
-        let first = self.position.index;
-        let last = match self.code[first + 1..]
+    fn block_comment(&self) -> Result<usize> {
+        let mut last = '\0';
+        let last = match self.find_next(self.position.index, |&(_, &c)| {
+            let result = last == '*' && c == '/';
+            last = c;
+            result
+        }) {
+            Some(last) => last,
+            None => {
+                return Err(Error::UnexpectedEOF(
+                    self.make_error_pos(),
+                    "while waiting for the tailing */",
+                ))
+            }
+        };
+
+        Ok(last + 1)
+    }
+
+    fn inline_comment(&self) -> Result<usize> {
+        let mut last = self.position.index;
+        let last = match self.find_next(last, |&(i, &c)| {
+            last = i;
+            c == '\n'
+        }) {
+            Some(last) => last,
+            None => last + 1,
+        };
+
+        println!("{}", last);
+
+        Ok(last)
+    }
+
+    fn find_next<P>(&self, after: usize, pred: P) -> Option<usize>
+    where
+        P: FnMut(&(usize, &char)) -> bool,
+    {
+        self.code[after..]
             .iter()
             .enumerate()
-            .find(|&(_, &c)| c == '\"')
-        {
-            Some((last, _)) => last,
+            .find(pred)
+            .map(|(i, _)| i)
+    }
+
+    fn lit_str(&mut self) -> Result<usize> {
+        let first = self.position.index;
+
+        let last = match self.find_next(first + 1, |&(_, &c)| c == '\"') {
+            Some(last) => last,
             None => {
                 return Err(Error::UnexpectedEOF(
                     self.make_error_pos(),
@@ -199,7 +241,7 @@ impl Lexer {
             self.code[first + 1..first + 1 + last].into_iter().collect(),
         ));
 
-        Ok(first + 3 + last - self.position.index)
+        Ok(last + 3)
     }
 
     fn lit_char(&mut self) -> Result<usize> {
@@ -229,7 +271,7 @@ impl Lexer {
 
         self.tokens.push(Token::LitChar(self.code[first + 1]));
 
-        Ok(first + 3 + last - self.position.index)
+        Ok(last + 3)
     }
 
     fn parse_radix(&mut self) -> (u32, usize) {
