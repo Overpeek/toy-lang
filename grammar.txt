@@ -1,0 +1,10 @@
+{} = order
+|  = or
+*  = 0 or more
+
+expr		:	term { { Token::Add | Token::Sub } term }*
+
+term		: 	factor { { Token::Mul | Token::Div } factor }*
+
+factor		:	Token::LitInt | Token::LitFloat
+			:	(expr)

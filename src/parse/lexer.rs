@@ -1,54 +1,32 @@
-use crate::artefact::tokens::{Delimiter, Operator, Side, Token, Tokens};
+use crate::artefact::tokens::{
+    Delimiter, ErrorSpan, LitChar, LitFloat, LitInt, LitStr, Operator, Side, SourceType, Span,
+    ToToken, Token, Tokens,
+};
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ErrorPosition {
-    file_path: Option<String>,
-    code_row: String,
-    row: usize,
-    column: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    UnexpectedEOF(ErrorPosition, &'static str),
-    InvalidIdentifier(ErrorPosition, &'static str),
-    InvalidCharacter(ErrorPosition, char),
+    UnexpectedEOF(ErrorSpan, &'static str),
+    InvalidIdentifier(ErrorSpan, &'static str),
+    InvalidCharacter(ErrorSpan, char),
 
-    InvalidLitFloat(ErrorPosition, <f64 as FromStr>::Err),
-    InvalidLitInt(ErrorPosition, <isize as FromStr>::Err),
-    InvalidLitChar(ErrorPosition, &'static str),
+    InvalidLitFloat(ErrorSpan, <f64 as FromStr>::Err),
+    InvalidLitInt(ErrorSpan, <isize as FromStr>::Err),
+    InvalidLitChar(ErrorSpan, &'static str),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl Display for ErrorPosition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let file_path = match self.file_path.as_ref() {
-            Some(file_path) => &file_path,
-            None => "<stdin>",
-        };
-        write!(
-            f,
-            "  at {}:{}:{}\n\n  {}\n  {}^ ",
-            file_path,
-            self.row,
-            self.column,
-            self.code_row,
-            " ".repeat(self.column)
-        )
-    }
-}
-
 impl Display for Error {
+    #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnexpectedEOF(pos, err) => write!(f, "Unexpected end of file\n{}{}", pos, err),
-            Self::InvalidIdentifier(pos, err) => write!(f, "Invalid identifier\n{}{}", pos, err),
-            Self::InvalidCharacter(pos, c) => write!(f, "Invalid character {}\n{}", c, pos),
-            Self::InvalidLitFloat(pos, err) => write!(f, "Invalid float literal: {}\n{}", err, pos),
-            Self::InvalidLitInt(pos, err) => write!(f, "Invalid int literal: {}\n{}", err, pos),
-            Self::InvalidLitChar(pos, err) => write!(f, "Invalid char literal: {}\n{}", err, pos),
+            Self::UnexpectedEOF(span, err) => write!(f, "Unexpected end of file\n{}{}", span, err),
+            Self::InvalidIdentifier(span, err) => write!(f, "Invalid identifier\n{}{}", span, err),
+            Self::InvalidCharacter(span, c) => write!(f, "Invalid character {}\n{}", c, span),
+            Self::InvalidLitFloat(span, err) => write!(f, "Invalid float literal: {}\n{}", err, span),
+            Self::InvalidLitInt(span, err) => write!(f, "Invalid int literal: {}\n{}", err, span),
+            Self::InvalidLitChar(span, err) => write!(f, "Invalid char literal: {}\n{}", err, span),
         }
     }
 }
@@ -86,16 +64,14 @@ impl LexerPosition {
 
 struct Lexer {
     position: LexerPosition,
-    code: Vec<char>,
     tokens: Tokens,
 }
 
 impl Lexer {
-    fn new(code: &str) -> Self {
+    fn new(code: &str, source_type: SourceType) -> Self {
         Self {
             position: LexerPosition::new(),
-            code: code.chars().collect(),
-            tokens: Tokens::new(),
+            tokens: Tokens::new(code, source_type),
         }
     }
 
@@ -106,41 +82,36 @@ impl Lexer {
 
     fn advance(&mut self) -> Result<bool> {
         self.process()?;
-        Ok((0..self.code.len()).contains(&self.position.index))
+        Ok((0..self.tokens.code.len()).contains(&self.position.index))
     }
 
     fn get_prev(&self) -> Option<char> {
         if self.position.index == 0 {
             None
         } else {
-            Some(self.code[self.position.index - 1])
+            Some(self.tokens.code[self.position.index - 1])
         }
     }
 
     fn get_this(&self) -> char {
-        self.code[self.position.index]
+        self.tokens.code[self.position.index]
     }
 
     fn get_next(&self) -> Option<char> {
-        self.code.get(self.position.index + 1).map(|c| *c)
+        self.tokens.code.get(self.position.index + 1).map(|c| *c)
     }
 
     fn get_chars(&self) -> (Option<char>, char, Option<char>) {
         (self.get_prev(), self.get_this(), self.get_next())
     }
 
-    fn make_error_pos(&self) -> ErrorPosition {
-        let code_row = self.code[self.position.row_index..]
-            .into_iter()
-            .take_while(|&&c| c != '\n')
-            .collect();
+    fn make_span(&self, len: usize) -> Span {
+        Span::new(self.position.index..self.position.index + len)
+    }
 
-        ErrorPosition {
-            code_row,
-            row: self.position.row,
-            column: self.position.column,
-            file_path: None, // TODO:
-        }
+    fn make_error_span(&self, len: usize) -> ErrorSpan {
+        self.make_span(len)
+            .make_error_span(&self.tokens.code, self.tokens.source_type.clone())
     }
 
     #[rustfmt::skip]
@@ -152,29 +123,39 @@ impl Lexer {
             (_, '\n', _) =>         { self.position.new_line(); 0 }
             (_, c, _) if c.is_whitespace()
                 =>                  { 1 },
-            (_, '.', _) =>          { self.tokens.push(Token::Dot); 1 },
-            (_, ',', _) =>          { self.tokens.push(Token::Comma); 1 },
-            (_, '+', _) =>          { self.tokens.push(Token::Operator(Operator::Add)); 1 },
-            (_, '-', Some('>')) =>  { self.tokens.push(Token::Arrow); 2 },
-            (_, '-', _) =>          { self.tokens.push(Token::Operator(Operator::Sub)); 1 },
-            (_, '*', _) =>          { self.tokens.push(Token::Operator(Operator::Mul)); 1 },
+
+            (_, '-', Some('>')) =>  { self.n_symbol_token(Token::Arrow, 2) },
             (_, '/', Some('/')) =>  { self.inline_comment()? },
             (_, '/', Some('*')) =>  { self.block_comment()? },
-            (_, '/', _) =>          { self.tokens.push(Token::Operator(Operator::Div)); 1 },
-            (_, '(', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Left)); 1 },
-            (_, ')', _) =>          { self.tokens.push(Token::Group(Delimiter::Parentheses, Side::Right)); 1 },
-            (_, '{', _) =>          { self.tokens.push(Token::Group(Delimiter::Braces, Side::Left)); 1 },
-            (_, '}', _) =>          { self.tokens.push(Token::Group(Delimiter::Braces, Side::Right)); 1 },
-            (_, '[', _) =>          { self.tokens.push(Token::Group(Delimiter::Brackets, Side::Left)); 1 },
-            (_, ']', _) =>          { self.tokens.push(Token::Group(Delimiter::Brackets, Side::Right)); 1 },
+
+            (_, '.', _) =>          { self.n_symbol_token(Token::Dot, 1) },
+            (_, ',', _) =>          { self.n_symbol_token(Token::Comma, 1) },
+
+            (_, '+', _) =>          { self.n_symbol_token(Token::Operator(Operator::Add), 1) },
+            (_, '-', _) =>          { self.n_symbol_token(Token::Operator(Operator::Sub), 1) },
+            (_, '*', _) =>          { self.n_symbol_token(Token::Operator(Operator::Mul), 1) },
+            (_, '/', _) =>          { self.n_symbol_token(Token::Operator(Operator::Div), 1) },
+
+            (_, '(', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Parentheses, Side::Left), 1) },
+            (_, ')', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Parentheses, Side::Right), 1) },
+            (_, '{', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Braces, Side::Left), 1) },
+            (_, '}', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Braces, Side::Right), 1) },
+            (_, '[', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Brackets, Side::Left), 1) },
+            (_, ']', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Brackets, Side::Right), 1) },
+
             (_, '\"', _) =>         { self.lit_str()? },
             (_, '\'', _) =>         { self.lit_char()? },
             (_, '0'..='9', _) =>    { self.lit_num()? },
-            other => return Err(Error::InvalidCharacter(self.make_error_pos(), other.1)),
+            other => return Err(Error::InvalidCharacter(self.make_error_span(1), other.1)),
         };
         self.position.advance(advance);
 
         Ok(())
+    }
+
+    fn n_symbol_token(&mut self, token: Token, n: usize) -> usize {
+        self.tokens.tokens.push(token.to_spanned(self.make_span(n)));
+        n
     }
 
     fn block_comment(&self) -> Result<usize> {
@@ -187,7 +168,7 @@ impl Lexer {
             Some(last) => last,
             None => {
                 return Err(Error::UnexpectedEOF(
-                    self.make_error_pos(),
+                    self.make_error_span(1),
                     "while waiting for the tailing */",
                 ))
             }
@@ -215,7 +196,7 @@ impl Lexer {
     where
         P: FnMut(&(usize, &char)) -> bool,
     {
-        self.code[after..]
+        self.tokens.code[after..]
             .iter()
             .enumerate()
             .find(pred)
@@ -229,7 +210,7 @@ impl Lexer {
             Some(last) => last,
             None => {
                 return Err(Error::UnexpectedEOF(
-                    self.make_error_pos(),
+                    self.make_error_span(1),
                     "while waiting for the tailing \"",
                 ))
             }
@@ -237,16 +218,22 @@ impl Lexer {
 
         // TODO: escapes
 
-        self.tokens.push(Token::LitStr(
-            self.code[first + 1..first + 1 + last].into_iter().collect(),
-        ));
+        let span = Span::new(first + 1..first + 1 + last);
+        self.tokens.tokens.push(
+            LitStr::new(
+                self.tokens.code[span.range()]
+                    .into_iter()
+                    .collect::<String>(),
+            )
+            .to_spanned_token(span),
+        );
 
         Ok(last + 3)
     }
 
     fn lit_char(&mut self) -> Result<usize> {
         let first = self.position.index;
-        let last = match self.code[first + 1..]
+        let last = match self.tokens.code[first + 1..]
             .iter()
             .enumerate()
             .find(|&(_, &c)| c == '\'')
@@ -254,7 +241,7 @@ impl Lexer {
             Some((last, _)) => last,
             None => {
                 return Err(Error::UnexpectedEOF(
-                    self.make_error_pos(),
+                    self.make_error_span(1),
                     "while waiting for the tailing '",
                 ))
             }
@@ -262,14 +249,17 @@ impl Lexer {
 
         if last != 1 {
             return Err(Error::InvalidLitChar(
-                self.make_error_pos(),
+                self.make_error_span(last),
                 "a char has to have exactly one codepoint",
             ));
         }
 
         // TODO: escapes
 
-        self.tokens.push(Token::LitChar(self.code[first + 1]));
+        let span = Span::new(first + 1..first + 2);
+        self.tokens
+            .tokens
+            .push(LitChar::new(self.tokens.code[span.range().start]).to_spanned_token(span));
 
         Ok(last + 3)
     }
@@ -288,7 +278,10 @@ impl Lexer {
         let mut dot = false;
 
         loop {
-            let c = self.code[self.position.index + offset];
+            let c = match self.tokens.code.get(self.position.index + offset) {
+                Some(&c) => c,
+                None => break,
+            };
             let is_dot = c == '.';
             let is_digit = c.is_digit(radix);
 
@@ -309,28 +302,31 @@ impl Lexer {
             offset += 1;
         }
 
-        let digit_str = self.code[self.position.index..self.position.index + offset]
+        let span = Span::new(self.position.index..self.position.index + offset);
+        let digit_str = self.tokens.code[span.range()]
             .into_iter()
             .collect::<String>();
 
-        self.tokens.push(if dot {
-            Token::LitFloat(
-                digit_str
-                    .parse()
-                    .or_else(|err| Err(Error::InvalidLitFloat(self.make_error_pos(), err)))?,
+        self.tokens.tokens.push(if dot {
+            LitFloat::new(
+                digit_str.parse().or_else(|err| {
+                    Err(Error::InvalidLitFloat(self.make_error_span(offset), err))
+                })?,
             )
+            .to_spanned_token(span)
         } else {
-            Token::LitInt(
+            LitInt::new(
                 digit_str
                     .parse()
-                    .or_else(|err| Err(Error::InvalidLitInt(self.make_error_pos(), err)))?,
+                    .or_else(|err| Err(Error::InvalidLitInt(self.make_error_span(offset), err)))?,
             )
+            .to_spanned_token(span)
         });
 
         Ok(offset)
     }
 }
 
-pub fn run_lexer(code: &str) -> Result<Tokens> {
-    Lexer::new(code).run()
+pub fn run_lexer(code: &str, source_type: SourceType) -> Result<Tokens> {
+    Lexer::new(code, source_type).run()
 }
