@@ -2,7 +2,8 @@ use std::{borrow::Cow, fmt::Display};
 
 use crate::artefact::{
     ast::{
-        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, Node, ScopeNode, UnaryOpNode,
+        AccessNode, AssignNode, BinaryOpNode, BooleanNode, FnNode, IfElseNode, Node, ScopeNode,
+        UnaryOpNode,
     },
     tokens::{
         Delimiter, ErrorSpan, Group, Keyword, Operator, Side, Span, SpannedToken, ToToken, Token,
@@ -37,7 +38,7 @@ impl<'t> Parser<'t> {
     }
 
     fn run(mut self) -> Result<Node> {
-        let result = self.scope()?;
+        let result = self.func()?;
 
         match self.peek_token() {
             Some(&SpannedToken {
@@ -68,7 +69,7 @@ impl<'t> Parser<'t> {
         Span::new(self.tokens.code.len()..self.tokens.code.len() + 1)
     }
 
-    fn expect(&self, expected_token: &Token) -> Option<SpannedToken> {
+    fn expect_or_span(&self, expected_token: &Token) -> Option<SpannedToken> {
         match self.peek_token() {
             Some(SpannedToken { value, .. }) if value == expected_token => None,
             Some(token) => Some(token.clone()),
@@ -76,8 +77,8 @@ impl<'t> Parser<'t> {
         }
     }
 
-    fn expect_or(&self, expected_token: &Token) -> Result<()> {
-        if let Some(token) = self.expect(expected_token) {
+    fn expect(&self, expected_token: &Token) -> Result<()> {
+        if let Some(token) = self.expect_or_span(expected_token) {
             return Err(Error::UnexpectedToken(
                 self.make_error_span(&token.span),
                 token.value.clone(),
@@ -85,6 +86,39 @@ impl<'t> Parser<'t> {
             ));
         } else {
             Ok(())
+        }
+    }
+
+    fn parse(&mut self, expected_token: &Token) -> Result<()> {
+        self.expect(expected_token)?;
+        self.skip_token();
+        Ok(())
+    }
+
+    fn ident(&mut self) -> Result<String> {
+        match self.peek_token() {
+            Some(SpannedToken {
+                value: Token::Ident(ident),
+                ..
+            }) => {
+                let ident = ident.clone();
+                self.skip_token();
+                Ok(ident)
+            }
+            Some(token) => {
+                return Err(Error::UnexpectedToken(
+                    self.make_error_span(&token.span),
+                    token.value.clone(),
+                    "expected identifier".into(),
+                ))
+            }
+            None => {
+                return Err(Error::UnexpectedToken(
+                    self.make_error_span(&self.make_eof_span()),
+                    Token::EOF,
+                    "expected identifier".into(),
+                ))
+            }
         }
     }
 
@@ -131,17 +165,7 @@ impl<'t> Parser<'t> {
                 self.skip_token();
                 let expr = self.expr()?;
 
-                if let Some(token) = self.expect(&Token::Group(Group {
-                    delimiter: Delimiter::Parentheses,
-                    side: Side::Right,
-                })) {
-                    return Err(Error::UnexpectedToken(
-                        self.make_error_span(&token.span),
-                        token.value.clone(),
-                        "expected ')'".into(),
-                    ));
-                };
-                self.skip_token();
+                self.parse(&Group::new(Delimiter::Parentheses, Side::Right).to_token())?;
 
                 Ok(expr)
             }
@@ -161,24 +185,17 @@ impl<'t> Parser<'t> {
 
                 let test = self.expr()?;
 
-                self.expect_or(&Group::new(Delimiter::Braces, Side::Left).to_token())?;
-                self.skip_token();
+                self.parse(&Group::new(Delimiter::Braces, Side::Left).to_token())?;
 
                 let on_true = self.expr()?;
 
-                self.expect_or(&Group::new(Delimiter::Braces, Side::Right).to_token())?;
-                self.skip_token();
-
-                self.expect_or(&Keyword::Else.to_token())?;
-                self.skip_token();
-
-                self.expect_or(&Group::new(Delimiter::Braces, Side::Left).to_token())?;
-                self.skip_token();
+                self.parse(&Group::new(Delimiter::Braces, Side::Right).to_token())?;
+                self.parse(&Keyword::Else.to_token())?;
+                self.parse(&Group::new(Delimiter::Braces, Side::Left).to_token())?;
 
                 let on_false = self.expr()?;
 
-                self.expect_or(&Group::new(Delimiter::Braces, Side::Right).to_token())?;
-                self.skip_token();
+                self.parse(&Group::new(Delimiter::Braces, Side::Right).to_token())?;
 
                 Ok(Node::IfElseNode(IfElseNode::new(test, on_true, on_false)))
             }
@@ -188,33 +205,9 @@ impl<'t> Parser<'t> {
             }) => {
                 self.skip_token();
 
-                let ident = match self.peek_token() {
-                    Some(SpannedToken {
-                        value: Token::Ident(ident),
-                        ..
-                    }) => {
-                        let ident = ident.clone();
-                        self.skip_token();
-                        ident
-                    }
-                    Some(token) => {
-                        return Err(Error::UnexpectedToken(
-                            self.make_error_span(&token.span),
-                            token.value.clone(),
-                            "expected identifier".into(),
-                        ))
-                    }
-                    None => {
-                        return Err(Error::UnexpectedToken(
-                            self.make_error_span(&self.make_eof_span()),
-                            Token::EOF,
-                            "expected identifier".into(),
-                        ))
-                    }
-                };
+                let ident = self.ident()?;
 
-                self.expect_or(&Token::Assign)?;
-                self.skip_token();
+                self.parse(&Token::Assign)?;
 
                 let expr = self.expr()?;
 
@@ -297,7 +290,7 @@ impl<'t> Parser<'t> {
         Ok(lhs_node)
     }
 
-    fn scope(&mut self) -> Result<Node> {
+    fn scope(&mut self) -> Result<ScopeNode> {
         let mut scope = ScopeNode::new();
         let line = self.expr()?;
         log::debug!("parsed line: {}", line);
@@ -318,7 +311,22 @@ impl<'t> Parser<'t> {
             }
         }
 
-        Ok(Node::ScopeNode(scope))
+        Ok(scope)
+    }
+
+    fn func(&mut self) -> Result<Node> {
+        self.parse(&Keyword::Fn.to_token())?;
+
+        let name = self.ident()?;
+
+        self.parse(&Group::new(Delimiter::Parentheses, Side::Left).to_token())?;
+        self.parse(&Group::new(Delimiter::Parentheses, Side::Right).to_token())?;
+
+        self.parse(&Group::new(Delimiter::Braces, Side::Left).to_token())?;
+        let body = self.scope()?;
+        self.parse(&Group::new(Delimiter::Braces, Side::Right).to_token())?;
+
+        Ok(Node::FnNode(FnNode::new(name, body)))
     }
 }
 

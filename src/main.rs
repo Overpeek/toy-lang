@@ -63,7 +63,9 @@ fn cli() {
         stdout().flush().unwrap();
         stdin().read_line(&mut buf).unwrap();
 
-        run_code(&buf, SourceType::Stdin);
+        let code = format!("fn main() {{{}}}", buf);
+
+        run_code(&code, SourceType::Stdin);
     }
 }
 

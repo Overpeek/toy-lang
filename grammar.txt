@@ -14,8 +14,12 @@ shorhands:
     %<=         =       Operator::Le
     %=          =       Token::Assign
     %;          =       Token::Semicolon
+    %ty         =       TODO:
 
 grammar:
+    %fn         :       fn Token::Ident %lp %rp %lb %scope %rb
+                : TODO: fn Token::Ident %lp ( Token::Ident Token::Colon %ty Token::Comma )* (Token::Ident Token::Colon %ty)? %rp (Token::Arrow %ty)? %lb %scope %rb
+
     %scope      :       %expr ( %; %expr )*
 
     %expr       :       %arith-expr ( ( %== | %< | %> | %<= | %>= ) %arith-expr )*

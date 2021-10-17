@@ -12,6 +12,7 @@ pub enum Node {
     AssignNode(AssignNode),
     AccessNode(AccessNode),
     ScopeNode(ScopeNode),
+    FnNode(FnNode),
 }
 
 impl Display for Node {
@@ -26,6 +27,7 @@ impl Display for Node {
             Self::AssignNode(v) => Display::fmt(v, f),
             Self::AccessNode(v) => Display::fmt(v, f),
             Self::ScopeNode(v) => Display::fmt(v, f),
+            Self::FnNode(v) => Display::fmt(v, f),
         }
     }
 }
@@ -211,5 +213,23 @@ impl Display for ScopeNode {
         Ok(for line in self.lines.iter() {
             writeln!(f, "{};", line)?;
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FnNode {
+    pub name: String,
+    pub body: ScopeNode,
+}
+
+impl FnNode {
+    pub fn new(name: String, body: ScopeNode) -> Self {
+        Self { name, body }
+    }
+}
+
+impl Display for FnNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "fn {}() {{ {} }}", self.name, self.body)
     }
 }

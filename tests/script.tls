@@ -1,5 +1,8 @@
-let b = 9 > 3;
-let x = "xyz ";
-let s = x + "ab" + 'c' + "de" * 10;
-
-s
+fn main() {
+	let b = 9 > 3;
+	if b {
+		-1
+	} else {
+		6
+	}
+}

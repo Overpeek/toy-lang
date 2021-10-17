@@ -1,7 +1,7 @@
 use crate::artefact::{
     ast::{
-        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, LitNode, Node, ScopeNode,
-        UnaryOpNode,
+        AccessNode, AssignNode, BinaryOpNode, BooleanNode, FnNode, IfElseNode, LitNode, Node,
+        ScopeNode, UnaryOpNode,
     },
     tokens::{ErrorSpan, LitFloat, LitInt, LitStr, Operator, SourceType, Span},
 };
@@ -18,6 +18,7 @@ pub enum Error {
     ExpectedBool(ErrorSpan, Node),
     NoSuchVar(ErrorSpan, String),
     CannotGhost(ErrorSpan, String),
+    NoMainFn,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -31,6 +32,7 @@ impl Display for Error {
             Self::ExpectedBool(span, node) => write!(f, "Expected boolean, got: {}\n{}", node, span),
             Self::NoSuchVar(span, ident) => write!(f, "No variable {} was found\n{}", ident, span),
             Self::CannotGhost(span, ident) => write!(f, "Ghosting variable {}\n{}", ident, span),
+            Self::NoMainFn => write!(f, "No main function defined"),
         }
     }
 }
@@ -60,6 +62,7 @@ impl NodeVisit for Node {
             Self::AssignNode(v) => v.visit(mem),
             Self::AccessNode(v) => v.visit(mem),
             Self::ScopeNode(v) => v.visit(mem),
+            Self::FnNode(v) => v.visit(mem),
         };
 
         /* if let Ok(result) = &result {
@@ -383,25 +386,45 @@ impl NodeVisit for ScopeNode {
     }
 }
 
+impl NodeVisit for FnNode {
+    fn visit(&self, mem: &mut Memory) -> Result<Cow<'_, Node>> {
+        log::debug!(
+            "visiting {{ {} }} = {{ {:?} }}",
+            self,
+            std::any::type_name::<Self>()
+        );
+
+        match mem.functions.insert(self.name.clone(), self.body.clone()) {
+            Some(_) => Err(Error::CannotGhost(
+                Span::new(0..0).make_error_span(&vec![], SourceType::Stdin),
+                self.name.clone(),
+            )),
+            None => Ok(Cow::Owned(Node::NoneNode)),
+        }
+    }
+}
+
 struct Memory {
     variables: HashMap<String, Node>,
+    functions: HashMap<String, ScopeNode>,
 }
 
 impl Memory {
     fn new() -> Self {
         Self {
             variables: HashMap::new(),
+            functions: HashMap::new(),
         }
     }
 }
 
-pub fn run_interpreter(ast: &Node) -> NodeVisitResult<'_> {
+pub fn run_interpreter(ast: &Node) -> NodeVisitResult<'static> {
     let mut mem = Memory::new();
-    let result = ast.visit(&mut mem);
+    ast.visit(&mut mem)?;
 
-    if let Ok(result) = &result {
-        log::debug!("got result {}", result);
-    }
+    let main = mem.functions.get("main").cloned().ok_or(Error::NoMainFn)?;
 
-    result
+    let result = main.visit(&mut mem)?;
+    log::debug!("got result {}", result);
+    Ok(Cow::Owned(result.as_ref().clone()))
 }
