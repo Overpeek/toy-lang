@@ -41,7 +41,7 @@ trait NodeVisit: Debug {
     fn visit(&self, mem: &mut Memory) -> Result<Cow<'_, Node>>;
 }
 
-type NodeVisitResult<'a> = Result<Cow<'a, Node>>;
+pub type NodeVisitResult<'a> = Result<Cow<'a, Node>>;
 
 impl NodeVisit for Node {
     fn visit(&self, mem: &mut Memory) -> NodeVisitResult<'_> {
@@ -404,13 +404,13 @@ impl NodeVisit for FnNode {
     }
 }
 
-struct Memory {
-    variables: HashMap<String, Node>,
-    functions: HashMap<String, ScopeNode>,
+pub struct Memory {
+    pub variables: HashMap<String, Node>,
+    pub functions: HashMap<String, ScopeNode>,
 }
 
 impl Memory {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
@@ -420,11 +420,15 @@ impl Memory {
 
 pub fn run_interpreter(ast: &Node) -> NodeVisitResult<'static> {
     let mut mem = Memory::new();
-    ast.visit(&mut mem)?;
+    run_interpreter_with(ast, &mut mem)
+}
+
+pub fn run_interpreter_with(ast: &Node, mem: &mut Memory) -> NodeVisitResult<'static> {
+    ast.visit(mem)?;
 
     let main = mem.functions.get("main").cloned().ok_or(Error::NoMainFn)?;
 
-    let result = main.visit(&mut mem)?;
+    let result = main.visit(mem)?;
     log::debug!("got result {}", result);
     Ok(Cow::Owned(result.as_ref().clone()))
 }
