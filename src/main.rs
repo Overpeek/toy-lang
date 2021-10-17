@@ -1,3 +1,6 @@
+use crate::{
+    artefact::tokens::SourceType, interpreter::run_interpreter, parse::parser::run_parser,
+};
 use colorful::Colorful;
 use parse::lexer::run_lexer;
 use std::{
@@ -7,11 +10,8 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{
-    artefact::tokens::SourceType, interpreter::run_interpreter, parse::parser::run_parser,
-};
-
 pub mod artefact;
+pub mod compiler;
 pub mod interpreter;
 pub mod parse;
 

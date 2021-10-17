@@ -1,5 +1,7 @@
 use std::{fmt::Display, ops::Range, path::PathBuf};
 
+use backtrace::Backtrace;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Span(Range<usize>);
 
@@ -9,7 +11,11 @@ impl Span {
     }
 
     pub fn make_error_span(&self, code: &Vec<char>, source_type: SourceType) -> ErrorSpan {
-        let range = self.range();
+        let mut range = self.range();
+        range.start = range.start.min(code.len());
+        range.end = range.end.min(code.len());
+
+        log::debug!("backtrace: {:?}", Backtrace::new());
 
         let before = code[..range.start]
             .into_iter()

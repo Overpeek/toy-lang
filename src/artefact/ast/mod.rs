@@ -1,11 +1,11 @@
-use super::tokens::{LitFloat, LitInt, Operator};
+use super::tokens::{Lit, LitChar, LitFloat, LitInt, LitStr, Operator};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     BinaryOpNode(BinaryOpNode),
     UnaryOpNode(UnaryOpNode),
-    NumberNode(NumberNode),
+    LitNode(LitNode),
     NoneNode,
     BooleanNode(BooleanNode),
     IfElseNode(IfElseNode),
@@ -19,7 +19,7 @@ impl Display for Node {
         match self {
             Self::BinaryOpNode(v) => Display::fmt(v, f),
             Self::UnaryOpNode(v) => Display::fmt(v, f),
-            Self::NumberNode(v) => Display::fmt(v, f),
+            Self::LitNode(v) => Display::fmt(v, f),
             Self::NoneNode => write!(f, "()"),
             Self::BooleanNode(v) => Display::fmt(v, f),
             Self::IfElseNode(v) => Display::fmt(v, f),
@@ -73,16 +73,31 @@ impl Display for UnaryOpNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NumberNode {
+pub enum LitNode {
     LitInt(LitInt),
     LitFloat(LitFloat),
+    LitStr(LitStr),
+    LitChar(LitChar),
 }
 
-impl Display for NumberNode {
+impl From<Lit> for LitNode {
+    fn from(lit: Lit) -> Self {
+        match lit {
+            Lit::LitInt(v) => LitNode::LitInt(v),
+            Lit::LitFloat(v) => LitNode::LitFloat(v),
+            Lit::LitStr(v) => LitNode::LitStr(v),
+            Lit::LitChar(v) => LitNode::LitChar(v),
+        }
+    }
+}
+
+impl Display for LitNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LitInt(v) => Display::fmt(v, f),
             Self::LitFloat(v) => Display::fmt(v, f),
+            Self::LitStr(v) => Display::fmt(v, f),
+            Self::LitChar(v) => Display::fmt(v, f),
         }
     }
 }

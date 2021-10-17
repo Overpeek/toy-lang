@@ -24,7 +24,7 @@ grammar:
 
     %term       :       %factor ( ( %* | %/ ) %factor )*
 
-    %factor     :       Token::LitInt | Token::LitFloat | Keyword::True | Keyword::False | Token::Ident
+    %factor     :       Token::Lit | Keyword::True | Keyword::False | Token::Ident
                 :       %lp %expr %rp
                 :       ( %+ | %- ) %factor
                 :       Keyword::If %expr %lb %expr %rb Keyword::Else %lb %expr %rb

@@ -248,9 +248,9 @@ impl Lexer {
     }
 
     fn lit_str(&mut self) -> Result<usize> {
-        let first = self.position.index;
+        let first = self.position.index + 1;
 
-        let last = match self.find_next(first + 1, |&(_, &c)| c == '\"') {
+        let last = match self.find_next(first, |&(_, &c)| c == '\"') {
             Some(last) => last,
             None => {
                 return Err(Error::UnexpectedEOF(
@@ -262,7 +262,7 @@ impl Lexer {
 
         // TODO: escapes
 
-        let span = Span::new(first + 1..first + 1 + last);
+        let span = Span::new(first..first + last);
         self.tokens.tokens.push(
             LitStr::new(
                 self.tokens.code[span.range()]
@@ -272,12 +272,12 @@ impl Lexer {
             .to_spanned_token(span),
         );
 
-        Ok(last + 3)
+        Ok(last + 2)
     }
 
     fn lit_char(&mut self) -> Result<usize> {
-        let first = self.position.index;
-        let last = match self.tokens.code[first + 1..]
+        let first = self.position.index + 1;
+        let last = match self.tokens.code[first..]
             .iter()
             .enumerate()
             .find(|&(_, &c)| c == '\'')
@@ -300,12 +300,12 @@ impl Lexer {
 
         // TODO: escapes
 
-        let span = Span::new(first + 1..first + 2);
+        let span = Span::new(first..first + 1);
         self.tokens
             .tokens
             .push(LitChar::new(self.tokens.code[span.range().start]).to_spanned_token(span));
 
-        Ok(last + 3)
+        Ok(last + 2)
     }
 
     fn parse_radix(&mut self) -> (u32, usize) {

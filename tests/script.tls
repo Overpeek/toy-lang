@@ -1,7 +1,5 @@
-let value = 9 > 3;
+let b = 9 > 3;
+let x = "xyz ";
+let s = x + "ab" + 'c' + "de" * 10;
 
-8 * if value {
-	8
-} else {
-	0
-}
+s

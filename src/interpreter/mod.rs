@@ -1,9 +1,9 @@
 use crate::artefact::{
     ast::{
-        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, Node, NumberNode, ScopeNode,
+        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, LitNode, Node, ScopeNode,
         UnaryOpNode,
     },
-    tokens::{ErrorSpan, LitFloat, LitInt, Operator, SourceType, Span},
+    tokens::{ErrorSpan, LitFloat, LitInt, LitStr, Operator, SourceType, Span},
 };
 use std::{
     borrow::Cow,
@@ -52,7 +52,7 @@ impl NodeVisit for Node {
             Self::BinaryOpNode(v) => v.visit(mem),
             Self::UnaryOpNode(v) => v.visit(mem),
 
-            Self::NumberNode(_) => Ok(Cow::Borrowed(self)),
+            Self::LitNode(_) => Ok(Cow::Borrowed(self)),
             Self::NoneNode => Ok(Cow::Borrowed(self)),
             Self::BooleanNode(_) => Ok(Cow::Borrowed(self)),
 
@@ -82,128 +82,163 @@ impl NodeVisit for BinaryOpNode {
         let result = match (self.operator, lhs.as_ref(), rhs.as_ref()) {
             (
                 Operator::Add,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitFloat(
-                LitFloat::new(lhs.value + rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitFloat(LitFloat::new(
+                lhs.value + rhs.value,
+            ))))),
             (
                 Operator::Add,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitInt(
-                LitInt::new(lhs.value + rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitInt(LitInt::new(
+                lhs.value + rhs.value,
+            ))))),
+            (
+                Operator::Add,
+                Node::LitNode(LitNode::LitStr(lhs)),
+                Node::LitNode(LitNode::LitStr(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitStr(LitStr::new(
+                format!("{}{}", lhs.value, rhs.value),
+            ))))),
+            (
+                Operator::Add,
+                Node::LitNode(LitNode::LitChar(lhs)),
+                Node::LitNode(LitNode::LitChar(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitStr(LitStr::new(
+                format!("{}{}", lhs.value, rhs.value),
+            ))))),
+            (
+                Operator::Add,
+                Node::LitNode(LitNode::LitChar(lhs)),
+                Node::LitNode(LitNode::LitStr(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitStr(LitStr::new(
+                format!("{}{}", lhs.value, rhs.value),
+            ))))),
+            (
+                Operator::Add,
+                Node::LitNode(LitNode::LitStr(lhs)),
+                Node::LitNode(LitNode::LitChar(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitStr(LitStr::new(
+                format!("{}{}", lhs.value, rhs.value),
+            ))))),
             (
                 Operator::Sub,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitFloat(
-                LitFloat::new(lhs.value - rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitFloat(LitFloat::new(
+                lhs.value - rhs.value,
+            ))))),
             (
                 Operator::Sub,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitInt(
-                LitInt::new(lhs.value - rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitInt(LitInt::new(
+                lhs.value - rhs.value,
+            ))))),
             (
                 Operator::Mul,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitFloat(
-                LitFloat::new(lhs.value * rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitFloat(LitFloat::new(
+                lhs.value * rhs.value,
+            ))))),
             (
                 Operator::Mul,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitInt(
-                LitInt::new(lhs.value * rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitInt(LitInt::new(
+                lhs.value * rhs.value,
+            ))))),
+            (
+                Operator::Mul,
+                Node::LitNode(LitNode::LitStr(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitStr(LitStr::new(
+                lhs.value.repeat(rhs.value as usize),
+            ))))),
             (
                 Operator::Div,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitFloat(
-                LitFloat::new(lhs.value / rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitFloat(LitFloat::new(
+                lhs.value / rhs.value,
+            ))))),
             (
                 Operator::Div,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
-            ) => Ok(Cow::Owned(Node::NumberNode(NumberNode::LitInt(
-                LitInt::new(lhs.value / rhs.value),
-            )))),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
+            ) => Ok(Cow::Owned(Node::LitNode(LitNode::LitInt(LitInt::new(
+                lhs.value / rhs.value,
+            ))))),
 
             (
                 Operator::Eq,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value == rhs.value,
             )))),
             (
                 Operator::Eq,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value == rhs.value,
             )))),
             (
                 Operator::Ge,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value >= rhs.value,
             )))),
             (
                 Operator::Ge,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value >= rhs.value,
             )))),
             (
                 Operator::Gt,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value > rhs.value,
             )))),
             (
                 Operator::Gt,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value > rhs.value,
             )))),
             (
                 Operator::Le,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value <= rhs.value,
             )))),
             (
                 Operator::Le,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value <= rhs.value,
             )))),
             (
                 Operator::Lt,
-                Node::NumberNode(NumberNode::LitFloat(lhs)),
-                Node::NumberNode(NumberNode::LitFloat(rhs)),
+                Node::LitNode(LitNode::LitFloat(lhs)),
+                Node::LitNode(LitNode::LitFloat(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value < rhs.value,
             )))),
             (
                 Operator::Lt,
-                Node::NumberNode(NumberNode::LitInt(lhs)),
-                Node::NumberNode(NumberNode::LitInt(rhs)),
+                Node::LitNode(LitNode::LitInt(lhs)),
+                Node::LitNode(LitNode::LitInt(rhs)),
             ) => Ok(Cow::Owned(Node::BooleanNode(BooleanNode::new(
                 lhs.value < rhs.value,
             )))),
@@ -233,18 +268,18 @@ impl NodeVisit for UnaryOpNode {
         );
         let node = self.node.visit(mem)?;
         let result = match (self.operator, node.as_ref()) {
-            (Operator::Add, Node::NumberNode(NumberNode::LitFloat(node))) => Ok(Cow::Owned(
-                Node::NumberNode(NumberNode::LitFloat(LitFloat::new(node.value))),
+            (Operator::Add, Node::LitNode(LitNode::LitFloat(node))) => Ok(Cow::Owned(
+                Node::LitNode(LitNode::LitFloat(LitFloat::new(node.value))),
             )),
-            (Operator::Add, Node::NumberNode(NumberNode::LitInt(node))) => Ok(Cow::Owned(
-                Node::NumberNode(NumberNode::LitInt(LitInt::new(node.value))),
+            (Operator::Add, Node::LitNode(LitNode::LitInt(node))) => Ok(Cow::Owned(Node::LitNode(
+                LitNode::LitInt(LitInt::new(node.value)),
+            ))),
+            (Operator::Sub, Node::LitNode(LitNode::LitFloat(node))) => Ok(Cow::Owned(
+                Node::LitNode(LitNode::LitFloat(LitFloat::new(-node.value))),
             )),
-            (Operator::Sub, Node::NumberNode(NumberNode::LitFloat(node))) => Ok(Cow::Owned(
-                Node::NumberNode(NumberNode::LitFloat(LitFloat::new(-node.value))),
-            )),
-            (Operator::Sub, Node::NumberNode(NumberNode::LitInt(node))) => Ok(Cow::Owned(
-                Node::NumberNode(NumberNode::LitInt(LitInt::new(-node.value))),
-            )),
+            (Operator::Sub, Node::LitNode(LitNode::LitInt(node))) => Ok(Cow::Owned(Node::LitNode(
+                LitNode::LitInt(LitInt::new(-node.value)),
+            ))),
 
             (op, node) => Err(Error::OpNotImplementedForType(
                 Span::new(0..0).make_error_span(&vec![], SourceType::Stdin),

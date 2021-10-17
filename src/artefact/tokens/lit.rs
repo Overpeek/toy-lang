@@ -72,7 +72,7 @@ impl ToToken for LitStr {
 
 impl Display for LitStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "\"{}\"", self.value)
     }
 }
 
@@ -95,7 +95,7 @@ impl ToToken for LitChar {
 
 impl Display for LitChar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "'{}'", self.value)
     }
 }
 

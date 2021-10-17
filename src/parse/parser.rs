@@ -2,12 +2,11 @@ use std::{borrow::Cow, fmt::Display};
 
 use crate::artefact::{
     ast::{
-        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, Node, NumberNode, ScopeNode,
-        UnaryOpNode,
+        AccessNode, AssignNode, BinaryOpNode, BooleanNode, IfElseNode, Node, ScopeNode, UnaryOpNode,
     },
     tokens::{
-        Delimiter, ErrorSpan, Group, Keyword, Lit, Operator, Side, Span, SpannedToken, ToToken,
-        Token, Tokens,
+        Delimiter, ErrorSpan, Group, Keyword, Operator, Side, Span, SpannedToken, ToToken, Token,
+        Tokens,
     },
 };
 
@@ -22,7 +21,7 @@ impl Display for Error {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnexpectedToken(span, token, err) => write!(f, "Unexpected token '{:?}'\n{}{}", token, span, err),
+            Self::UnexpectedToken(span, token, err) => write!(f, "Unexpected token '{}'\n{}{}", token, span, err),
         }
     }
 }
@@ -65,14 +64,15 @@ impl<'t> Parser<'t> {
         span.make_error_span(&self.tokens.code, self.tokens.source_type.clone())
     }
 
+    fn make_eof_span(&self) -> Span {
+        Span::new(self.tokens.code.len()..self.tokens.code.len() + 1)
+    }
+
     fn expect(&self, expected_token: &Token) -> Option<SpannedToken> {
         match self.peek_token() {
             Some(SpannedToken { value, .. }) if value == expected_token => None,
             Some(token) => Some(token.clone()),
-            None => Some(SpannedToken::new(
-                Token::EOF,
-                Span::new(self.tokens.code.len() - 1..self.tokens.code.len()),
-            )),
+            None => Some(SpannedToken::new(Token::EOF, self.make_eof_span())),
         }
     }
 
@@ -81,7 +81,7 @@ impl<'t> Parser<'t> {
             return Err(Error::UnexpectedToken(
                 self.make_error_span(&token.span),
                 token.value.clone(),
-                format!("expected: '{:?}'", expected_token).into(),
+                format!("expected: '{}'", expected_token).into(),
             ));
         } else {
             Ok(())
@@ -90,20 +90,13 @@ impl<'t> Parser<'t> {
 
     fn factor(&mut self) -> Result<Node> {
         match self.peek_token() {
-            Some(&SpannedToken {
-                value: Token::Lit(Lit::LitInt(i)),
+            Some(SpannedToken {
+                value: Token::Lit(lit),
                 ..
             }) => {
+                let lit = lit.clone().into();
                 self.skip_token();
-
-                Ok(Node::NumberNode(NumberNode::LitInt(i)))
-            }
-            Some(&SpannedToken {
-                value: Token::Lit(Lit::LitFloat(f)),
-                ..
-            }) => {
-                self.skip_token();
-                Ok(Node::NumberNode(NumberNode::LitFloat(f)))
+                Ok(Node::LitNode(lit))
             }
             Some(&SpannedToken {
                 value: Token::Keyword(Keyword::True),
@@ -213,9 +206,7 @@ impl<'t> Parser<'t> {
                     }
                     None => {
                         return Err(Error::UnexpectedToken(
-                            self.make_error_span(&Span::new(
-                                self.tokens.code.len() - 1..self.tokens.code.len(),
-                            )),
+                            self.make_error_span(&self.make_eof_span()),
                             Token::EOF,
                             "expected identifier".into(),
                         ))
@@ -235,7 +226,7 @@ impl<'t> Parser<'t> {
                 "expected int or float".into(),
             )),
             None => Err(Error::UnexpectedToken(
-                self.make_error_span(&Span::new(0..0)),
+                self.make_error_span(&self.make_eof_span()),
                 Token::EOF,
                 "expected int or float".into(),
             )),
@@ -308,7 +299,9 @@ impl<'t> Parser<'t> {
 
     fn scope(&mut self) -> Result<Node> {
         let mut scope = ScopeNode::new();
-        scope.push_line(self.expr()?);
+        let line = self.expr()?;
+        log::debug!("parsed line: {}", line);
+        scope.push_line(line);
 
         loop {
             match self.peek_token() {
@@ -317,7 +310,9 @@ impl<'t> Parser<'t> {
                     ..
                 }) => {
                     self.skip_token();
-                    scope.push_line(self.expr()?);
+                    let line = self.expr()?;
+                    log::debug!("parsed line: {}", line);
+                    scope.push_line(line);
                 }
                 _ => break,
             }
