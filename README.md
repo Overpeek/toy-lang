@@ -36,7 +36,3 @@ outputs
 ```
 64
 ```
-
-### TODO:
-	jit with llvm
-	type interface with proc macro derive
