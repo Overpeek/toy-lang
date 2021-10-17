@@ -16,27 +16,31 @@ pub mod interpreter;
 pub mod parse;
 
 fn run_code(code: &str, source_type: SourceType) {
-    match run_lexer(code, source_type) {
-        Ok(tokens) => {
-            println!("{}: lexer got tokens {:?}", "debug".yellow(), tokens.tokens);
-
-            match run_parser(&tokens) {
-                Ok(ast) => {
-                    println!("{}: parser got AST {:?}", "debug".yellow(), &ast);
-
-                    let result = run_interpreter(&ast);
-                    println!("{}: interpreter got result {:?}", "debug".yellow(), result);
-                    println!("{} ", result);
-                }
-                Err(err) => {
-                    println!("{}: {}", "error".red(), err)
-                }
-            }
-        }
+    // lexer run
+    let tokens = match run_lexer(code, source_type) {
+        Ok(tokens) => tokens,
         Err(err) => {
-            println!("{}: {}", "error".red(), err)
+            return println!("{}: {}", "error".red(), err);
         }
-    }
+    };
+
+    // parser run
+    let ast = match run_parser(&tokens) {
+        Ok(ast) => ast,
+        Err(err) => {
+            return println!("{}: {}", "error".red(), err);
+        }
+    };
+
+    // interpreter run
+    let result = match run_interpreter(&ast) {
+        Ok(result) => result,
+        Err(err) => {
+            return println!("{}: {}", "error".red(), err);
+        }
+    };
+
+    println!("{}", result);
 }
 
 fn run_file(path: PathBuf) {
@@ -64,6 +68,8 @@ fn cli() {
 }
 
 fn main() {
+    env_logger::init();
+
     if let Some(file) = env::args().skip(1).next() {
         run_file(file.into())
     } else {

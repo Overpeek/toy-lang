@@ -1,10 +1,31 @@
-{} = order
-|  = or
-*  = 0 or more
+shorhands:
+    %lp         =       Token::Group { delimiter: Delimiter::Parentheses, side: Side::Left }
+    %rp         =       Token::Group { delimiter: Delimiter::Parentheses, side: Side::Right }
+    %lb         =       Token::Group { delimiter: Delimiter::Braces, side: Side::Left }
+    %rb         =       Token::Group { delimiter: Delimiter::Braces, side: Side::Right }
+    %+          =       Operator::Add
+    %-          =       Operator::Sub
+    %*          =       Operator::Mul
+    %/          =       Operator::Div
+    %==         =       Operator::Eq
+    %>          =       Operator::Gt
+    %>=         =       Operator::Ge
+    %<          =       Operator::Lt
+    %<=         =       Operator::Le
+    %=          =       Token::Assign
+    %;          =       Token::Semicolon
 
-expr		:	term { { Token::Add | Token::Sub } term }*
+grammar:
+    %scope      :       %expr ( %; %expr )*
 
-term		: 	factor { { Token::Mul | Token::Div } factor }*
+    %expr       :       %arith-expr ( ( %== | %< | %> | %<= | %>= ) %arith-expr )*
 
-factor		:	Token::LitInt | Token::LitFloat
-			:	(expr)
+    %arith-expr :       %term ( ( %+ | %- ) %term )*
+
+    %term       :       %factor ( ( %* | %/ ) %factor )*
+
+    %factor     :       Token::LitInt | Token::LitFloat | Keyword::True | Keyword::False | Token::Ident
+                :       %lp %expr %rp
+                :       ( %+ | %- ) %factor
+                :       Keyword::If %expr %lb %expr %rb Keyword::Else %lb %expr %rb
+                :       Keyword::Let Token::Ident %= %expr

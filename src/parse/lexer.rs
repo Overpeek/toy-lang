@@ -1,7 +1,4 @@
-use crate::artefact::tokens::{
-    Delimiter, ErrorSpan, LitChar, LitFloat, LitInt, LitStr, Operator, Side, SourceType, Span,
-    ToToken, Token, Tokens,
-};
+use crate::artefact::tokens::{Delimiter, ErrorSpan, Group, Keyword, LitChar, LitFloat, LitInt, LitStr, Operator, Side, SourceType, Span, ToToken, Token, Tokens};
 use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,27 +127,74 @@ impl Lexer {
 
             (_, '.', _) =>          { self.n_symbol_token(Token::Dot, 1) },
             (_, ',', _) =>          { self.n_symbol_token(Token::Comma, 1) },
+            (_, ':', _) =>          { self.n_symbol_token(Token::Colon, 1) },
+            (_, ';', _) =>          { self.n_symbol_token(Token::Semicolon, 1) },
 
-            (_, '+', _) =>          { self.n_symbol_token(Token::Operator(Operator::Add), 1) },
-            (_, '-', _) =>          { self.n_symbol_token(Token::Operator(Operator::Sub), 1) },
-            (_, '*', _) =>          { self.n_symbol_token(Token::Operator(Operator::Mul), 1) },
-            (_, '/', _) =>          { self.n_symbol_token(Token::Operator(Operator::Div), 1) },
+            (_, '>', Some('=')) =>  { self.n_symbol_token(Operator::Ge.to_token(), 2) },
+            (_, '>', _) =>          { self.n_symbol_token(Operator::Gt.to_token(), 1) },
+            (_, '<', Some('=')) =>  { self.n_symbol_token(Operator::Le.to_token(), 2) },
+            (_, '<', _) =>          { self.n_symbol_token(Operator::Lt.to_token(), 1) },
+            (_, '=', Some('=')) =>  { self.n_symbol_token(Operator::Eq.to_token(), 2) },
+            (_, '=', _) =>          { self.n_symbol_token(Token::Assign, 1) },
 
-            (_, '(', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Parentheses, Side::Left), 1) },
-            (_, ')', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Parentheses, Side::Right), 1) },
-            (_, '{', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Braces, Side::Left), 1) },
-            (_, '}', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Braces, Side::Right), 1) },
-            (_, '[', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Brackets, Side::Left), 1) },
-            (_, ']', _) =>          { self.n_symbol_token(Token::Group(Delimiter::Brackets, Side::Right), 1) },
+            (_, '+', _) =>          { self.n_symbol_token(Operator::Add.to_token(), 1) },
+            (_, '-', _) =>          { self.n_symbol_token(Operator::Sub.to_token(), 1) },
+            (_, '*', _) =>          { self.n_symbol_token(Operator::Mul.to_token(), 1) },
+            (_, '/', _) =>          { self.n_symbol_token(Operator::Div.to_token(), 1) },
+
+            (_, '(', _) =>          { self.n_symbol_token(Group::new(Delimiter::Parentheses, Side::Left).to_token(), 1) },
+            (_, ')', _) =>          { self.n_symbol_token(Group::new(Delimiter::Parentheses, Side::Right).to_token(), 1) },
+            (_, '{', _) =>          { self.n_symbol_token(Group::new(Delimiter::Braces, Side::Left).to_token(), 1) },
+            (_, '}', _) =>          { self.n_symbol_token(Group::new(Delimiter::Braces, Side::Right).to_token(), 1) },
+            (_, '[', _) =>          { self.n_symbol_token(Group::new(Delimiter::Brackets, Side::Left).to_token(), 1) },
+            (_, ']', _) =>          { self.n_symbol_token(Group::new(Delimiter::Brackets, Side::Right).to_token(), 1) },
 
             (_, '\"', _) =>         { self.lit_str()? },
             (_, '\'', _) =>         { self.lit_char()? },
             (_, '0'..='9', _) =>    { self.lit_num()? },
+
+            (_, 'a'..='z' | 'A'..='Z', _) =>    { self.identifier()? },
+            
             other => return Err(Error::InvalidCharacter(self.make_error_span(1), other.1)),
         };
         self.position.advance(advance);
 
         Ok(())
+    }
+
+    fn identifier(&mut self) -> Result<usize> {
+        let mut offset = 0;
+        loop {
+            let c = match self.tokens.code.get(self.position.index + offset) {
+                Some(&c) => c,
+                None => break,
+            };
+
+            if c.is_alphanumeric() || c == '_' {
+                offset += 1;
+            } else {
+                break;
+            }
+
+        };
+
+        let span = Span::new(self.position.index..self.position.index + offset);
+        let s = self.tokens.code[span.range()].into_iter().collect::<String>();
+
+        // keyword matching
+        let token = match s.as_str() {
+            "fn" => Keyword::Fn.to_token(),
+            "let" => Keyword::Let.to_token(),
+            "if" => Keyword::If.to_token(),
+            "else" => Keyword::Else.to_token(),
+            "true" => Keyword::True.to_token(),
+            "false" => Keyword::False.to_token(),
+            _ => Token::Ident(s),
+        };
+
+        self.tokens.tokens.push(token.to_spanned(span));
+
+        Ok(offset)
     }
 
     fn n_symbol_token(&mut self, token: Token, n: usize) -> usize {
@@ -328,5 +372,11 @@ impl Lexer {
 }
 
 pub fn run_lexer(code: &str, source_type: SourceType) -> Result<Tokens> {
-    Lexer::new(code, source_type).run()
+    let result = Lexer::new(code, source_type).run();
+
+    if let Ok(result) = &result {
+        log::debug!("got result {:?}", result.tokens);
+    }
+
+    result
 }
