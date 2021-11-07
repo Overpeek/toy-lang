@@ -21,18 +21,3 @@ let result: Obj = run_code(r#"
     obj
 "#).unwrap();
 ```
-
-### Working example
-```
-let value = 9 > 3;
-
-8 * if value {
-    8
-} else {
-    0
-}
-```
-outputs
-```
-64
-```
