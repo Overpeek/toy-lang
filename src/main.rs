@@ -1,91 +1,90 @@
-use crate::{
-    artefact::{ast::Node, tokens::SourceType},
-    interpreter::{run_interpreter, run_interpreter_with, NodeVisitResult},
-    parse::parser::run_parser,
-};
-use colorful::Colorful;
+use ast::Ast;
+use compiler::Compiler;
 use interpreter::Memory;
-use parse::lexer::run_lexer;
 use std::{
-    env,
-    fs::File,
-    io::{stdin, stdout, Read, Write},
-    path::PathBuf,
+    fmt::Debug,
+    time::{Duration, Instant},
 };
 
-pub mod artefact;
+use crate::interpreter::Interpreter;
+
+extern crate pest;
+#[macro_use]
+extern crate pest_derive;
+
+pub mod ast;
 pub mod compiler;
 pub mod interpreter;
-pub mod parse;
 
-fn run_code<F>(code: &str, source_type: SourceType, mut interpreter: F)
-where
-    F: FnMut(&Node) -> NodeVisitResult<'static>,
-{
-    // lexer run
-    let tokens = match run_lexer(code, source_type) {
-        Ok(tokens) => tokens,
-        Err(err) => {
-            return println!("{}: {}", "error".red(), err);
-        }
-    };
+fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
+    setup: F1,
+    bench: F2,
+    expected: U,
+) -> (Duration, usize) {
+    let instant = Instant::now();
+    let mut result = setup();
+    let duration = instant.elapsed();
 
-    // parser run
-    let ast = match run_parser(&tokens) {
-        Ok(ast) => ast,
-        Err(err) => {
-            return println!("{}: {}", "error".red(), err);
-        }
-    };
-
-    // interpreter run
-    let result = match interpreter(&ast) {
-        Ok(result) => result,
-        Err(err) => {
-            return println!("{}: {}", "error".red(), err);
-        }
-    };
-
-    println!("{}", result);
-}
-
-fn run_file(path: PathBuf) {
-    match File::open(&path) {
-        Ok(mut file) => {
-            let mut buf = String::new();
-            match file.read_to_string(&mut buf) {
-                Ok(_) => run_code(&buf, SourceType::File(path), run_interpreter),
-                Err(err) => println!("{}: {}", "error".red(), err),
-            }
-        }
-        Err(err) => println!("{}: {}", "error".red(), err),
+    let instant = Instant::now();
+    let mut c_runs = 0;
+    while instant.elapsed() < Duration::from_secs(3) {
+        c_runs += 1;
+        let result = bench(&mut result);
+        assert!(
+            result == expected,
+            "got: {:?}, expected: {:?}",
+            result,
+            expected
+        );
     }
-}
-
-fn cli() {
-    let mut mem = Memory::new();
-    loop {
-        let mut buf = String::new();
-        print!("{} > ", env!("CARGO_CRATE_NAME"));
-        stdout().flush().unwrap();
-        stdin().read_line(&mut buf).unwrap();
-
-        let code = format!("fn main() {{{}}}", buf);
-
-        run_code(&code, SourceType::Stdin, |node| {
-            run_interpreter_with(node, &mut mem)
-        });
-
-        mem.functions.remove("main");
-    }
+    (duration, c_runs)
 }
 
 fn main() {
     env_logger::init();
+    log::info!("Running ...");
+    let file = std::fs::read_to_string("tests/script.tls").unwrap();
+    let interpreter = Interpreter::new();
+    let compiler = Compiler::default();
 
-    if let Some(file) = env::args().skip(1).next() {
-        run_file(file.into())
-    } else {
-        cli()
-    }
+    // interpreter
+    let (i_setup, i_runs) = bench(
+        || {
+            let memory = Memory::default();
+            let ast = Ast::new(&file).unwrap();
+            (memory, ast)
+        },
+        |(memory, ast)| interpreter.exec(memory, ast),
+        -46845.0,
+    );
+
+    // compiler
+    let (c_setup, c_runs) = bench(
+        || {
+            let mut module = compiler.module();
+            let ast = Ast::new(&file).unwrap();
+            module.compile(&ast);
+            module
+        },
+        |module| module.exec(),
+        -46845.0,
+    );
+
+    // zero-cost
+    let (z_setup, z_runs) = bench(|| {}, |_| {}, ());
+
+    log::info!("Interpreter setup took: {:?}", i_setup);
+    log::info!("Compiler setup took: {:?}", c_setup);
+    log::info!("Zero-cost setup took: {:?}", z_setup);
+    log::info!("Interpreted ran: {:>15} times in 3 sec", i_runs);
+    log::info!(
+        "Compiled ran:    {:>15} times in 3 sec ({:.1} times faster)",
+        c_runs,
+        c_runs as f64 / i_runs as f64
+    );
+    log::info!(
+        "Zero-cost ran:   {:>15} times in 3 sec ({:.1} times faster)",
+        z_runs,
+        z_runs as f64 / c_runs as f64
+    );
 }

@@ -1,0 +1,39 @@
+add = { "+" }
+sub = { "-" }
+mul = { "*" }
+div = { "/" }
+
+
+
+sign        =  { add | sub }
+
+int         =  { sign? ~ ASCII_DIGIT+ }
+float       = @{ int ~ "." ~ ASCII_DIGIT+ }
+ident       = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+factor      =  {
+    float |
+    int |
+    "(" ~ expr ~ ")" |
+    call |
+    sign ~ factor
+}
+
+call        =  { ident ~ "()" }
+
+term        =  { factor ~ ((mul | div) ~ factor)* }
+expr        =  { term ~ (sign ~ term)* }
+
+statement   =  { expr }
+scope       =  { statement ~ (";" ~ statement)* }
+dscope      = _{ "{" ~ scope ~ "}" }
+function    =  { "fn" ~ ident ~ "(" ~ ")" ~ dscope }
+module      =  { function* }
+
+input       = _{ SOI ~ module ~ EOI }
+
+WHITESPACE  = _{ " " | "\t" | "\n" | "\r\n" }
+COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+// field = { (ASCII_DIGIT | "." | "-")+ }
+// record = { field ~ ("," ~ field)* }
+// file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
