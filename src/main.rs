@@ -78,12 +78,12 @@ fn main() {
     println!("Zero-cost setup took: {:?}", z_setup);
     println!("Interpreted ran: {:>15} times in 3 sec", i_runs);
     println!(
-        "Compiled ran:    {:>15} times in 3 sec ({:.1} times faster)",
+        "Compiled ran:    {:>15} times in 3 sec ({:.1}× faster)",
         c_runs,
         c_runs as f64 / i_runs as f64
     );
     println!(
-        "Zero-cost ran:   {:>15} times in 3 sec ({:.1} times faster)",
+        "Zero-cost ran:   {:>15} times in 3 sec ({:.1}× faster)",
         z_runs,
         z_runs as f64 / c_runs as f64
     );
