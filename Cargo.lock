@@ -162,12 +162,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "colorful"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bca1619ff57dd7a56b58a8e25ef4199f123e78e503fe1653410350a1b98ae65"
-
-[[package]]
 name = "cookie"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1422,16 +1416,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
-name = "stackalloc"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f5c9dd3feb8a4adc8eae861e5f48862a92f9a9f38cf8fc99b92fc6ec016121"
-dependencies = [
- "cc",
- "rustc_version",
-]
-
-[[package]]
 name = "string"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,16 +1653,12 @@ dependencies = [
 name = "toy-lang"
 version = "0.1.0"
 dependencies = [
- "backtrace",
- "colorful",
  "env_logger",
  "inkwell",
  "itertools",
  "log",
  "pest",
  "pest_derive",
- "stackalloc",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -1731,12 +1711,6 @@ checksum = "d54590932941a9e9266f0832deed84ebe1bf2e4c9e4a3554d393d18f5e854bf9"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-xid"

@@ -42,7 +42,7 @@ fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
 
 fn main() {
     env_logger::init();
-    log::info!("Running ...");
+    println!("Running ...");
     let file = std::fs::read_to_string("tests/script.tls").unwrap();
     let interpreter = Interpreter::new();
     let compiler = Compiler::default();
@@ -73,16 +73,16 @@ fn main() {
     // zero-cost
     let (z_setup, z_runs) = bench(|| {}, |_| {}, ());
 
-    log::info!("Interpreter setup took: {:?}", i_setup);
-    log::info!("Compiler setup took: {:?}", c_setup);
-    log::info!("Zero-cost setup took: {:?}", z_setup);
-    log::info!("Interpreted ran: {:>15} times in 3 sec", i_runs);
-    log::info!(
+    println!("Interpreter setup took: {:?}", i_setup);
+    println!("Compiler setup took: {:?}", c_setup);
+    println!("Zero-cost setup took: {:?}", z_setup);
+    println!("Interpreted ran: {:>15} times in 3 sec", i_runs);
+    println!(
         "Compiled ran:    {:>15} times in 3 sec ({:.1} times faster)",
         c_runs,
         c_runs as f64 / i_runs as f64
     );
-    log::info!(
+    println!(
         "Zero-cost ran:   {:>15} times in 3 sec ({:.1} times faster)",
         z_runs,
         z_runs as f64 / c_runs as f64

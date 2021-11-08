@@ -110,7 +110,7 @@ impl<'ctx> CompilerModule<'ctx> {
 
         self.mpm.run_on(&self.module);
         self.lpm.run_on(&self.module);
-        self.module.print_to_stderr();
+        log::debug!("LLVM IR: {}", self.module.print_to_string().to_string());
 
         self.main = unsafe {
             self.engine
