@@ -1,4 +1,5 @@
 use ast::Ast;
+use colorful::Colorful;
 use compiler::Compiler;
 use interpreter::Memory;
 use std::{
@@ -73,18 +74,39 @@ fn main() {
     // zero-cost
     let (z_setup, z_runs) = bench(|| {}, |_| {}, ());
 
-    println!("Interpreter setup took: {:?}", i_setup);
-    println!("Compiler setup took: {:?}", c_setup);
-    println!("Zero-cost setup took: {:?}", z_setup);
-    println!("Interpreted ran: {:>15} times in 3 sec", i_runs);
     println!(
-        "Compiled ran:    {:>15} times in 3 sec ({:.1}× faster)",
-        c_runs,
-        c_runs as f64 / i_runs as f64
+        "Interpreter setup took: {}",
+        format!("{:>8}", format!("{:.1?}", i_setup))
+            .green()
+            .to_string()
+            .as_str()
     );
     println!(
-        "Zero-cost ran:   {:>15} times in 3 sec ({:.1}× faster)",
-        z_runs,
-        z_runs as f64 / c_runs as f64
+        "Compiler setup took:    {}",
+        format!("{:>8}", format!("{:.1?}", c_setup))
+            .green()
+            .to_string()
+            .as_str()
+    );
+    println!(
+        "Zero-cost setup took:   {}",
+        format!("{:>8}", format!("{:.1?}", z_setup))
+            .green()
+            .to_string()
+            .as_str()
+    );
+    println!(
+        "Interpreted ran: {} times in 3 sec",
+        format!("{:>15}", i_runs).yellow()
+    );
+    println!(
+        "Compiled ran:    {} times in 3 sec ({}× faster)",
+        format!("{:>15}", c_runs).yellow(),
+        format!("{:.1}", c_runs as f64 / i_runs as f64).red()
+    );
+    println!(
+        "Zero-cost ran:   {} times in 3 sec ({}× faster)",
+        format!("{:>15}", z_runs).yellow(),
+        format!("{:.1}", z_runs as f64 / c_runs as f64).red()
     );
 }
