@@ -1,39 +1,86 @@
-add = { "+" }
-sub = { "-" }
-mul = { "*" }
-div = { "/" }
+keyword     =  { "let" | "fn" | "if" | "else" | "true" | "false" }
 
+lit         = _{ float | int }
+    int     = @{ (add | sub)? ~ ASCII_DIGIT+ }
+    float   = @{ int ~ "." ~ ASCII_DIGIT+ }
+    bool    =  { "true" | "false" }
 
+ident       = @{ !keyword ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 
-sign        =  { add | sub }
+binary_op   = _{ add | sub | mul | div }
+    add     =  { "+" }
+    sub     =  { "-" }
+    mul     =  { "*" }
+    div     =  { "/" }
+    // eq      =  { "==" }
 
-int         =  { sign? ~ ASCII_DIGIT+ }
-float       = @{ int ~ "." ~ ASCII_DIGIT+ }
-ident       = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
-factor      =  {
-    float |
-    int |
-    "(" ~ expr ~ ")" |
-    call |
-    sign ~ factor
-}
+unary_op    = _{ plus | neg }
+    plus    =  { "+" }
+    neg     =  { "-" }
+    // not     =  { "!" }
 
-call        =  { ident ~ "()" }
+term        =  { lit | "(" ~ expr ~ ")" | branch | call | access }
+    access  =  { ident }
+    branch  =  { "if" ~ expr ~ scope ~ "else" ~ scope }
+    call    =  { ident ~ "()" }
 
-term        =  { factor ~ ((mul | div) ~ factor)* }
-expr        =  { term ~ (sign ~ term)* }
+expr        =  { _term ~ (binary_op ~ _term)* }
+    _term   = _{ unary | term }
+    unary   =  { unary_op ~ expr }
 
-statement   =  { expr }
-scope       =  { statement ~ (";" ~ statement)* }
-dscope      = _{ "{" ~ scope ~ "}" }
-function    =  { "fn" ~ ident ~ "(" ~ ")" ~ dscope }
+statement   = _{ expr | assign }
+    assign  =  { "let" ~ ident ~ "=" ~ expr }
+
+scope       =  { "{" ~ statement ~ (";" ~ statement)* ~ "}" }
+
+function    =  { "fn" ~ ident ~ "()" ~ scope }
+
 module      =  { function* }
 
 input       = _{ SOI ~ module ~ EOI }
 
+
+
 WHITESPACE  = _{ " " | "\t" | "\n" | "\r\n" }
 COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
 
-// field = { (ASCII_DIGIT | "." | "-")+ }
-// record = { field ~ ("," ~ field)* }
-// file = { SOI ~ (record ~ ("\r\n" | "\n"))* ~ EOI }
+/* int         =  { (add | sub)? ~ ASCII_DIGIT+ }
+float       = @{ int ~ "." ~ ASCII_DIGIT+ }
+lit         = _{ float | int }
+ident       = @{ !keyword ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+factor      =  {
+    lit | (add | sub) ~ factor | "(" ~ expr ~ ")" | call |
+    d_scope | access | branch
+} */
+
+/* access      =  { ident }
+args        =  { (expr ~ ("," ~ expr)*)? }
+call        =  { ident ~ "(" ~ args ~ ")" } */
+
+
+
+// arith
+/* term  =  { factor ~ ((mul | div) ~ factor)* }
+expr  =  { term ~ ((add | sub) ~ term)* } */
+
+// logic_expr  =  {  }
+
+// control flow
+/* branch      =  { "if" ~ expr ~ d_scope ~ "else" ~ d_scope }
+assign      =  { "let" ~ ident ~ "=" ~ expr }
+no_return   =  { assign }
+statement   =  { no_return | expr } */
+
+// structure
+//scope       =  { statement ~ (";" ~ statement)* }
+//d_scope     = _{ "{" ~ scope ~ "}" }
+//params      =  { ident* }
+//function    =  { "fn" ~ ident ~ "(" ~ params ~ ")" ~ d_scope }
+//module      =  { function* }
+
+// file
+/* input       = _{ SOI ~ module ~ EOI } */
+
+// other
+//WHITESPACE  = _{ " " | "\t" | "\n" | "\r\n" }
+//COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" } */

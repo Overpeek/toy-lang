@@ -1,7 +1,5 @@
-use ast::Ast;
 use colorful::Colorful;
 use compiler::Compiler;
-use interpreter::Memory;
 use std::{
     fmt::Debug,
     time::{Duration, Instant},
@@ -41,21 +39,20 @@ fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
     (duration, c_runs)
 }
 
-fn main() {
-    env_logger::init();
-    println!("Running ...");
-    let file = std::fs::read_to_string("tests/script.tls").unwrap();
-    let interpreter = Interpreter::new();
+#[allow(unused)]
+fn benchmark() {
+    println!("Benchmarking ...");
+    // let interpreter = Interpreter::new();
     let compiler = Compiler::default();
 
     // interpreter
     let (i_setup, i_runs) = bench(
         || {
-            let memory = Memory::default();
-            let ast = Ast::new(&file).unwrap();
-            (memory, ast)
+            // let memory = Memory::default();
+            let ast = ast::parse_file("tests/script.tls").unwrap();
+            (/* memory, */ast)
         },
-        |(memory, ast)| interpreter.exec(memory, ast),
+        |ast /* (memory, ast) */| todo!(), /* interpreter.exec(memory, ast).unwrap() */
         -46845.0,
     );
 
@@ -63,7 +60,7 @@ fn main() {
     let (c_setup, c_runs) = bench(
         || {
             let mut module = compiler.module();
-            let ast = Ast::new(&file).unwrap();
+            let ast = ast::parse_file("tests/script.tls").unwrap();
             module.compile(&ast);
             module
         },
@@ -109,4 +106,28 @@ fn main() {
         format!("{:>15}", z_runs).yellow(),
         format!("{:.1}", z_runs as f64 / c_runs as f64).red()
     );
+}
+
+#[allow(unused)]
+fn run() {
+    println!("Running ...");
+    let ast = ast::parse_file("tests/script.tls").unwrap();
+
+    /* let engine = rhai::Engine::new();
+    engine.eval::<()>("fn y() { y() } y()").unwrap(); */
+
+    /* let mut memory = Memory::default();
+    let interpreter = Interpreter::new(); */
+    /* let result = interpreter.exec(&mut memory, &ast).unwrap(); */
+
+    // println!("Result: {}", result);
+    println!("AST: {}", ast.eval().unwrap())
+}
+
+fn main() {
+    env_logger::init();
+    // benchmark();
+    // run();
+    let c = Compiler::new();
+    let m = c.module();
 }

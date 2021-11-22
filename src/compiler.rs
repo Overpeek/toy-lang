@@ -3,10 +3,10 @@ use inkwell::{
     builder::Builder,
     context::Context,
     execution_engine::{ExecutionEngine, JitFunction},
-    module::Module,
+    module::{Linkage, Module},
     passes::{PassManager, PassManagerBuilder},
-    values::{BasicValueEnum, FloatValue, FunctionValue},
-    OptimizationLevel,
+    values::{ArrayValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue},
+    AddressSpace, IntPredicate, OptimizationLevel,
 };
 use std::collections::HashMap;
 
@@ -75,6 +75,85 @@ impl Compiler {
             .create_jit_execution_engine(OptimizationLevel::Aggressive)
             .unwrap();
 
+        // TMP
+        let fn_type = context.void_type().fn_type(&[], false);
+        let proto = module.add_function("main", fn_type, None);
+        let entry = context.append_basic_block(proto, "entry");
+        builder.position_at_end(entry);
+
+        let i128_type = context.i128_type();
+        let str_type = context.i8_type().ptr_type(AddressSpace::Generic);
+        let i32_type = context.i32_type();
+        let c_zero = i128_type.const_int(0, false);
+        let c_one = i128_type.const_int(1, false);
+        let c_two = i128_type.const_int(2, false);
+        let c_arr = i128_type.const_array(&[c_zero, c_one]);
+
+        // let format_str = unsafe { builder.build_global_string("%d", "format") };
+        // let format_str = context.const_string(b"%d\0", true);
+        // let format_str_chars = b"%d\0".map(|c| context.i8_type().const_int(c as u64, false));
+        // let format_str = context.i8_type().const_array(&format_str_chars);
+        let format_str = builder
+            .build_global_string_ptr("%d\n", "format str")
+            .as_pointer_value();
+
+        let printf_type = context
+            .i32_type()
+            .fn_type(&[str_type.into(), i128_type.into()], false);
+        let printf = module.add_function("printf", printf_type, Some(Linkage::External));
+
+        /* let f_alloca = builder.build_array_alloca(f_i128, f_two, "f");
+        let f = builder
+            .build_load(f_alloca, "load f_alloca")
+            .into_array_value(); */
+        let f0 = builder.build_alloca(i128_type, "f0");
+        let f1 = builder.build_alloca(i128_type, "f1");
+        /* let i = builder
+        .build_load(i_alloca, "load i_alloca")
+        .into_int_value(); */
+        // builder.build_;
+        /* builder.build_store(f, f_arr); */
+        builder.build_store(f0, c_zero);
+        builder.build_store(f1, c_one);
+
+        {
+            let r#loop = context.append_basic_block(proto, "loop");
+            builder.build_unconditional_branch(r#loop);
+            builder.position_at_end(r#loop);
+
+            let vf0 = builder.build_load(f0, "load f0").into_int_value();
+            let vf1 = builder.build_load(f1, "load f1").into_int_value();
+
+            builder.build_call(printf, &[format_str.into(), vf0.into()], "call printf0");
+            builder.build_call(printf, &[format_str.into(), vf1.into()], "call printf1");
+
+            // f0 += f1;
+            // f1 += f0;
+            let vf0 = builder.build_int_add(vf0, vf1, "sum f0 f1");
+            let vf1 = builder.build_int_add(vf0, vf1, "sum f1 f0");
+
+            builder.build_store(f0, vf0);
+            builder.build_store(f1, vf1);
+
+            builder.build_unconditional_branch(r#loop);
+            {
+                let exit = context.append_basic_block(proto, "exit");
+                // builder.build_unconditional_branch(exit);
+                builder.position_at_end(exit);
+                builder.build_return(None);
+            }
+        }
+
+        /* builder.position_at_end(entry);
+        builder.build_return(None); */
+
+        assert!(proto.verify(true));
+        fpm.run_on(&proto);
+        mpm.run_on(&module);
+        lpm.run_on(&module);
+        module.print_to_file("debug.ll").unwrap();
+        log::debug!("LLVM IR: {}", module.print_to_string().to_string());
+
         CompilerModule {
             context,
             module,
@@ -97,11 +176,18 @@ impl<'ctx> CompilerModule<'ctx> {
         unsafe { self.main.as_ref().expect("No main function").call() }
     }
 
-    pub fn compile(&mut self, ast: &ast::Ast) {
-        self.compile_mod(&ast.module)
+    pub fn dump(&self) {
+        self.mpm.run_on(&self.module);
+        self.lpm.run_on(&self.module);
+        log::debug!("LLVM IR: {}", self.module.print_to_string().to_string());
     }
 
-    fn compile_mod(&mut self, module: &ast::Module) {
+    pub fn compile(&mut self, ast: &ast::Module) {
+        todo!()
+        /* self.compile_mod(&ast.module) */
+    }
+
+    /* fn compile_mod(&mut self, module: &ast::Module) {
         log::debug!("compiling module");
 
         for function in module.iter() {
@@ -123,7 +209,7 @@ impl<'ctx> CompilerModule<'ctx> {
         log::debug!("compiling fn: '{}'", function.0);
 
         let name = &function.0;
-        let scope = &function.1;
+        let scope = &function.2;
 
         // function prototype and block
         let proto = self.compile_fn_proto(name);
@@ -158,7 +244,8 @@ impl<'ctx> CompilerModule<'ctx> {
     }
 
     fn compile_statement(&self, statement: &ast::Statement) -> FloatValue {
-        self.compile_expr(statement)
+        todo!()
+        // self.compile_expr(statement)
     }
 
     fn compile_expr(&self, expr: &ast::Expr) -> FloatValue {
@@ -198,6 +285,7 @@ impl<'ctx> CompilerModule<'ctx> {
                     ast::Either::B(_) => self.builder.build_float_neg(rhs, "neg"),
                 }
             }
+            ast::Factor::Access(access) => todo!(),
         }
     }
 
@@ -210,7 +298,7 @@ impl<'ctx> CompilerModule<'ctx> {
     }
 
     fn compile_call(&self, call: &ast::Call) -> FloatValue {
-        let func = *self.functions.get(call).expect("Unknown function");
+        let func = *self.functions.get(&call.0).expect("Unknown function");
         let ret = self
             .builder
             .build_call(func, &[], "function call")
@@ -222,5 +310,5 @@ impl<'ctx> CompilerModule<'ctx> {
             BasicValueEnum::FloatValue(float) => float,
             _ => unimplemented!(),
         }
-    }
+    } */
 }

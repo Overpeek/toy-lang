@@ -1,14 +1,28 @@
-use std::fmt::{Debug, Display};
-
 use itertools::Itertools;
 use pest::{iterators::Pair, Parser};
+use std::{
+    fmt::{Debug, Display},
+    io,
+    path::Path,
+};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 struct ToyLangParser;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Either<T, U> {
+    A(T),
+    B(U),
+}
+
+// ----------
+// Error type
+// ----------
+
 pub enum Error {
     ParseError(pest::error::Error<Rule>),
+    IoError(io::Error),
 }
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -22,43 +36,79 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::ParseError(err) => write!(f, "{}", err),
+            Error::IoError(err) => write!(f, "{}", err),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Either<T, U> {
-    A(T),
-    B(U),
-}
+// ---
+// AST
+// ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Add;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sub;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Mul;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Div;
 
 pub type Ident = String;
+
 pub type Sign = Either<Add, Sub>;
-pub type Call = Ident;
+
+pub type Args = Vec<Statement>;
+
+pub type Call = (Ident, Args);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Factor {
     F64(f64),
     I64(i64),
-    Expr(Box<Expr>),
+    Statement(Box<Statement>),
     Call(Call),
     Sign(Box<(Sign, Factor)>),
+    Access(Access),
+    Branch(Box<Branch>),
 }
 
-pub type Term = (Factor, Vec<(Either<Mul, Div>, Factor)>);
-pub type Expr = (Term, Vec<(Sign, Term)>);
-pub type Statement = Expr;
+pub type ArithTerm = (Factor, Vec<(Either<Mul, Div>, Factor)>);
+
+pub type ArithExpr = (ArithTerm, Vec<(Sign, ArithTerm)>);
+
+pub type Access = Ident;
+
+pub type Assign = (Ident, Box<Statement>);
+
+pub type Branch = (Statement, Scope, Scope);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NoReturn {
+    Assign(Assign),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    ArithExpr(ArithExpr),
+    Branch(Box<Branch>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement {
+    NoReturn(NoReturn),
+    Expr(Expr),
+}
+
 pub type Scope = Vec<Statement>;
-pub type Function = (Ident, Scope);
+
+pub type Params = Vec<Ident>;
+
+pub type Function = (Ident, Params, Scope);
+
 pub type Module = Vec<Function>;
 
 pub struct Ast {
@@ -74,9 +124,18 @@ impl Ast {
         })
     }
 
+    pub fn new_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let file = std::fs::read_to_string("tests/script.tls").unwrap();
+        match Self::new(&file) {
+            Err(Error::ParseError(err)) => Err(Error::ParseError(
+                err.with_path(path.as_ref().to_string_lossy().as_ref()),
+            )),
+            other => other,
+        }
+    }
+
     fn parse_module(token: Pair<Rule>) -> Module {
         assert!(token.as_rule() == Rule::module);
-        log::debug!("got mod");
 
         token.into_inner().map(Self::parse_function).collect()
     }
@@ -85,30 +144,65 @@ impl Ast {
         assert!(token.as_rule() == Rule::function);
 
         let mut tokens = token.into_inner();
-        let name = tokens.next().unwrap().as_str().trim().to_string();
-        log::debug!("got fn: '{}'", name);
-
+        let ident = Self::parse_ident(tokens.next().unwrap());
+        let params = Self::parse_params(tokens.next().unwrap());
         let scope = Self::parse_scope(tokens.next().unwrap());
-        (name, scope)
+        (ident, params, scope)
+    }
+
+    fn parse_params(token: Pair<Rule>) -> Params {
+        assert!(token.as_rule() == Rule::params);
+
+        token.into_inner().map(Self::parse_ident).collect()
     }
 
     fn parse_scope(token: Pair<Rule>) -> Scope {
         assert!(token.as_rule() == Rule::scope);
-        log::debug!("got scope");
 
         token.into_inner().map(Self::parse_statement).collect()
     }
 
     fn parse_statement(token: Pair<Rule>) -> Statement {
         assert!(token.as_rule() == Rule::statement);
-        log::debug!("got statement");
 
-        Self::parse_expr(token.into_inner().next().unwrap())
+        let inner = token.into_inner().next().unwrap();
+        match inner.as_rule() {
+            Rule::assign => Statement::NoReturn(Self::parse_no_return(inner)),
+            Rule::expr => Statement::Expr(Self::parse_expr(inner)),
+            other => unreachable!("{:?}", other),
+        }
+    }
+
+    fn parse_expr(token: Pair<Rule>) -> Expr {
+        assert!(token.as_rule() == Rule::expr);
+
+        let inner = token.into_inner().next().unwrap();
+        match inner.as_rule() {
+            Rule::arith_expr => Expr::ArithExpr(Self::parse_arith_expr(inner)),
+            Rule::branch => Expr::Branch(Box::new(Self::parse_branch(inner))),
+            other => unreachable!("{:?}", other),
+        }
+    }
+
+    fn parse_no_return(token: Pair<Rule>) -> NoReturn {
+        assert!(token.as_rule() == Rule::no_return);
+
+        let inner = token.into_inner().next().unwrap();
+        NoReturn::Assign(Self::parse_assign(inner))
+    }
+
+    fn parse_branch(token: Pair<Rule>) -> Branch {
+        assert!(token.as_rule() == Rule::branch);
+
+        let mut inner = token.into_inner();
+        let test = Self::parse_statement(inner.next().unwrap());
+        let on_true = Self::parse_scope(inner.next().unwrap());
+        let on_false = Self::parse_scope(inner.next().unwrap());
+        (test, on_true, on_false)
     }
 
     fn parse_sign(token: Pair<Rule>) -> Sign {
         assert!(token.as_rule() == Rule::sign);
-        log::debug!("got sign");
 
         match token.into_inner().next().unwrap().as_rule() {
             Rule::add => Sign::A(Add),
@@ -117,10 +211,25 @@ impl Ast {
         }
     }
 
-    fn parse_expr(token: Pair<Rule>) -> Expr {
-        assert!(token.as_rule() == Rule::expr);
-        log::debug!("got expr");
+    fn parse_access(token: Pair<Rule>) -> Access {
+        assert!(token.as_rule() == Rule::access);
+        let mut tokens = token.into_inner();
 
+        Self::parse_ident(tokens.next().unwrap())
+    }
+
+    fn parse_assign(token: Pair<Rule>) -> Assign {
+        assert!(token.as_rule() == Rule::assign);
+        let mut tokens = token.into_inner();
+
+        let ident = Self::parse_ident(tokens.next().unwrap());
+        let statement = Box::new(Self::parse_statement(tokens.next().unwrap()));
+
+        (ident, statement)
+    }
+
+    fn parse_arith_expr(token: Pair<Rule>) -> ArithExpr {
+        assert!(token.as_rule() == Rule::arith_expr);
         let mut tokens = token.into_inner();
 
         let first = Self::parse_term(tokens.next().unwrap());
@@ -146,10 +255,8 @@ impl Ast {
         }
     }
 
-    fn parse_term(token: Pair<Rule>) -> Term {
-        assert!(token.as_rule() == Rule::term);
-        log::debug!("got term");
-
+    fn parse_term(token: Pair<Rule>) -> ArithTerm {
+        assert!(token.as_rule() == Rule::arith_term);
         let mut tokens = token.into_inner();
 
         let first = Self::parse_factor(tokens.next().unwrap());
@@ -169,42 +276,51 @@ impl Ast {
 
     fn parse_factor(token: Pair<Rule>) -> Factor {
         assert!(token.as_rule() == Rule::factor);
-        log::debug!("got factor: '{}'", token.as_str().trim());
-
         let mut tokens = token.into_inner();
+
         let inner = tokens.next().unwrap();
         match inner.as_rule() {
             Rule::float => Self::parse_float(inner),
             Rule::int => Self::parse_int(inner),
             Rule::call => Self::parse_call(inner),
-            Rule::expr => Factor::Expr(Box::new(Self::parse_expr(inner))),
+            Rule::statement => Factor::Statement(Box::new(Self::parse_statement(inner))),
             Rule::sign => {
                 let sign = Self::parse_sign(inner);
                 let rhs = Self::parse_factor(tokens.next().unwrap());
                 Factor::Sign(Box::new((sign, rhs)))
             }
+            Rule::access => Factor::Access(Self::parse_access(inner)),
+            Rule::branch => Factor::Branch(Box::new(Self::parse_branch(inner))),
             other => unreachable!("{:?}", other),
         }
     }
 
     fn parse_float(token: Pair<Rule>) -> Factor {
         assert!(token.as_rule() == Rule::float);
-
-        log::debug!("got float: '{}'", token.as_str().trim());
         Factor::F64(token.as_str().trim().parse().unwrap())
     }
 
     fn parse_int(token: Pair<Rule>) -> Factor {
         assert!(token.as_rule() == Rule::int);
-
-        log::debug!("got int: '{}'", token.as_str().trim());
         Factor::I64(token.as_str().trim().parse().unwrap())
     }
 
     fn parse_call(token: Pair<Rule>) -> Factor {
         assert!(token.as_rule() == Rule::call);
+        let mut tokens = token.into_inner();
 
-        log::debug!("got call: '{}'", token.as_str());
-        Factor::Call(token.into_inner().next().unwrap().as_str().to_string())
+        let ident = Self::parse_ident(tokens.next().unwrap());
+        let params = Self::parse_args(tokens.next().unwrap());
+        Factor::Call((ident, params))
+    }
+
+    fn parse_args(token: Pair<Rule>) -> Args {
+        assert!(token.as_rule() == Rule::args);
+        token.into_inner().map(Self::parse_statement).collect()
+    }
+
+    fn parse_ident(token: Pair<Rule>) -> Ident {
+        assert!(token.as_rule() == Rule::ident);
+        token.as_str().trim().to_string()
     }
 }
