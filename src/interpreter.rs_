@@ -1,0 +1,208 @@
+use crate::ast::{
+    Access, Assign, BinaryExpr, BinaryOp, Branch, Call, Expr, ExprInternal, Function, Ident, Lit,
+    Module, Scope, Statement, StatementInternal, Term, TermInternal, UnaryExpr, UnaryOp,
+};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+};
+
+pub const MAX_CALL_DEPTH: usize = 32;
+
+// ----------
+// Error type
+// ----------
+
+pub enum Error {
+    UnknownVariable(Ident),
+    UnknownFunction(Ident),
+    MissingMain,
+    StackOverflow,
+}
+pub type Result<T> = ::std::result::Result<T, Error>;
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::UnknownVariable(err) => {
+                write!(f, "Cannot find variable '{}' in this scope", err)
+            }
+            Error::UnknownFunction(err) => {
+                write!(f, "Cannot find function '{}' in this scope", err)
+            }
+            Error::MissingMain => write!(f, "No main function"),
+            Error::StackOverflow => write!(f, "Tried to overflow its max stack size"),
+        }
+    }
+}
+
+// -----------
+// Interpreter
+// -----------
+
+pub trait Interpreter {
+    fn eval(&self) -> Result<f64>;
+}
+
+impl Interpreter for Module {
+    fn eval(&self) -> Result<f64> {
+        let mut memory = ScopeMemory::default();
+        self.eval_with_memory(&mut memory, self)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct ScopeMemory {
+    variables: HashMap<String, f64>,
+}
+
+trait InterpreterWithMemory {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64>;
+}
+
+impl InterpreterWithMemory for Module {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        self.functions
+            .get("main")
+            .ok_or(Error::MissingMain)?
+            .eval_with_memory(memory, module)
+    }
+}
+
+impl InterpreterWithMemory for Function {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        self.internal.scope.eval_with_memory(memory, module)
+    }
+}
+
+impl InterpreterWithMemory for Scope {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        let mut last = 0.0;
+        for statement in self.statements.iter() {
+            last = statement.eval_with_memory(memory, module)?;
+        }
+        Ok(last)
+    }
+}
+
+impl InterpreterWithMemory for Statement {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        match self.internal.as_ref() {
+            StatementInternal::Expr(expr) => expr.eval_with_memory(memory, module),
+            StatementInternal::Assign(assign) => assign.eval_with_memory(memory, module),
+        }
+    }
+}
+
+impl InterpreterWithMemory for Assign {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        let expr = self.expr.eval_with_memory(memory, module)?;
+        if memory
+            .variables
+            .insert(self.name.clone().value, expr)
+            .is_some()
+        {
+            log::debug!("shadowing variable: '{}'", self.name);
+        }
+        Ok(0.0)
+    }
+}
+
+impl InterpreterWithMemory for Expr {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        match self.internal.as_ref() {
+            ExprInternal::BinaryExpr(expr) => expr.eval_with_memory(memory, module),
+            ExprInternal::UnaryExpr(expr) => expr.eval_with_memory(memory, module),
+            ExprInternal::Term(term) => term.eval_with_memory(memory, module),
+        }
+    }
+}
+
+impl InterpreterWithMemory for BinaryExpr {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        let sides = self.operands.as_ref();
+        let (lhs, rhs) = (
+            sides.lhs.eval_with_memory(memory, module)?,
+            sides.rhs.eval_with_memory(memory, module)?,
+        );
+
+        Ok(match self.operator {
+            BinaryOp::Add => lhs + rhs,
+            BinaryOp::Sub => lhs - rhs,
+            BinaryOp::Mul => lhs * rhs,
+            BinaryOp::Div => lhs / rhs,
+        })
+    }
+}
+
+impl InterpreterWithMemory for UnaryExpr {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        let operand = self.operand.eval_with_memory(memory, module)?;
+        Ok(match self.operator {
+            UnaryOp::Plus => operand,
+            UnaryOp::Neg => -operand,
+        })
+    }
+}
+
+impl InterpreterWithMemory for Term {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        match self.internal.as_ref() {
+            TermInternal::Lit(v) => v as &dyn InterpreterWithMemory,
+            TermInternal::Expr(v) => v as _,
+            TermInternal::Branch(v) => v as _,
+            TermInternal::Access(v) => v as _,
+            TermInternal::Call(v) => v as _,
+        }
+        .eval_with_memory(memory, module)
+    }
+}
+
+impl InterpreterWithMemory for Lit {
+    fn eval_with_memory(&self, _: &mut ScopeMemory, _: &Module) -> Result<f64> {
+        Ok(match self {
+            Lit::I64(i) => *i as f64,
+            Lit::F64(f) => *f,
+            Lit::Bool(_) => 0.0,
+            Lit::Unit(_) => 0.0,
+        })
+    }
+}
+
+impl InterpreterWithMemory for Call {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        module
+            .functions
+            .get(self.name.value.as_str())
+            .ok_or_else(|| Error::UnknownFunction(self.name.clone()))?
+            .eval_with_memory(memory, module)
+    }
+}
+
+impl InterpreterWithMemory for Branch {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, module: &Module) -> Result<f64> {
+        let test = self.internal.test.eval_with_memory(memory, module)?;
+        if (test).abs() > std::f64::EPSILON {
+            &self.internal.on_true
+        } else {
+            &self.internal.on_false
+        }
+        .eval_with_memory(memory, module)
+    }
+}
+
+impl InterpreterWithMemory for Access {
+    fn eval_with_memory(&self, memory: &mut ScopeMemory, _: &Module) -> Result<f64> {
+        memory
+            .variables
+            .get(self.name.value.as_str())
+            .cloned()
+            .ok_or_else(|| Error::UnknownVariable(self.name.clone()))
+    }
+}

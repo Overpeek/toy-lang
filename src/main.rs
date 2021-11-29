@@ -5,15 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::interpreter::Interpreter;
-
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
 
 pub mod ast;
 pub mod compiler;
-pub mod interpreter;
 
 fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
     setup: F1,
@@ -42,19 +39,7 @@ fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
 #[allow(unused)]
 fn benchmark() {
     println!("Benchmarking ...");
-    // let interpreter = Interpreter::new();
     let compiler = Compiler::default();
-
-    // interpreter
-    let (i_setup, i_runs) = bench(
-        || {
-            // let memory = Memory::default();
-            let ast = ast::parse_file("tests/script.tls").unwrap();
-            (/* memory, */ast)
-        },
-        |ast /* (memory, ast) */| todo!(), /* interpreter.exec(memory, ast).unwrap() */
-        -46845.0,
-    );
 
     // compiler
     let (c_setup, c_runs) = bench(
@@ -72,13 +57,6 @@ fn benchmark() {
     let (z_setup, z_runs) = bench(|| {}, |_| {}, ());
 
     println!(
-        "Interpreter setup took: {}",
-        format!("{:>8}", format!("{:.1?}", i_setup))
-            .green()
-            .to_string()
-            .as_str()
-    );
-    println!(
         "Compiler setup took:    {}",
         format!("{:>8}", format!("{:.1?}", c_setup))
             .green()
@@ -93,13 +71,8 @@ fn benchmark() {
             .as_str()
     );
     println!(
-        "Interpreted ran: {} times in 3 sec",
-        format!("{:>15}", i_runs).yellow()
-    );
-    println!(
-        "Compiled ran:    {} times in 3 sec ({}× faster)",
+        "Compiled ran:    {} times in 3 sec",
         format!("{:>15}", c_runs).yellow(),
-        format!("{:.1}", c_runs as f64 / i_runs as f64).red()
     );
     println!(
         "Zero-cost ran:   {} times in 3 sec ({}× faster)",
@@ -111,23 +84,18 @@ fn benchmark() {
 #[allow(unused)]
 fn run() {
     println!("Running ...");
+    let compiler = Compiler::default();
+    let mut module = compiler.module();
     let ast = ast::parse_file("tests/script.tls").unwrap();
 
-    /* let engine = rhai::Engine::new();
-    engine.eval::<()>("fn y() { y() } y()").unwrap(); */
+    module.compile(&ast);
+    let result = module.exec();
 
-    /* let mut memory = Memory::default();
-    let interpreter = Interpreter::new(); */
-    /* let result = interpreter.exec(&mut memory, &ast).unwrap(); */
-
-    // println!("Result: {}", result);
-    println!("AST: {}", ast.eval().unwrap())
+    println!("Result: {}", result);
 }
 
 fn main() {
     env_logger::init();
     // benchmark();
-    // run();
-    let c = Compiler::new();
-    let m = c.module();
+    run();
 }

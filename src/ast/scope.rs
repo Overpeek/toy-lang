@@ -1,30 +1,54 @@
-use super::{ParseAst, Result, Rule, Statement, Type, TypeOf};
+use super::{ParseAst, Result, Rule, Statement, StatementInternal, Type, TypeOf, VisibleVars};
 use pest::iterators::Pair;
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     pub statements: Vec<Statement>,
-    pub ty: Type,
+
+    alloc: HashMap<String, Type>,
+    ty: Option<Type>,
 }
 
 impl ParseAst for Scope {
-    fn parse(token: Pair<Rule>) -> Result<Self> {
+    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
         assert!(token.as_rule() == Rule::scope);
 
-        let statements: Vec<Statement> = token
+        // all statements within this scope
+        vars.push();
+        let statements: Result<Vec<Statement>> = token
             .into_inner()
-            .map(ParseAst::parse)
-            .collect::<Result<_>>()?;
+            .map(|token| ParseAst::parse(token, vars))
+            .collect();
+        vars.pop();
+        let statements = statements?;
+
+        // assign statements are the only statements to allocate
+        let alloc = statements
+            .iter()
+            .filter_map(|statement| match statement.internal.as_ref() {
+                StatementInternal::Assign(assign) => {
+                    Some((assign.name.value.clone(), assign.expr.type_of()))
+                }
+                _ => None,
+            })
+            .collect();
+
         let ty = statements
             .last()
-            .map_or(Type::Unit, |statement| statement.type_of());
-        Ok(Scope { statements, ty })
+            .as_ref()
+            .map_or(Some(Type::Unit), |stmt| stmt.type_of_checked());
+
+        Ok(Scope {
+            statements,
+            alloc,
+            ty,
+        })
     }
 }
 
 impl TypeOf for Scope {
-    fn type_of(&self) -> Type {
+    fn type_of_checked(&self) -> Option<Type> {
         self.ty
     }
 }

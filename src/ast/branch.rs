@@ -1,8 +1,6 @@
-use pest::iterators::Pair;
-
+use super::{Expr, ParseAst, Result, Rule, Scope, VisibleVars};
 use crate::ast::{Error, Type, TypeOf};
-
-use super::{Expr, ParseAst, Result, Rule, Scope};
+use pest::iterators::Pair;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,24 +13,37 @@ pub struct BranchInternal {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Branch {
     pub internal: Box<BranchInternal>,
-    ty: Type,
+
+    ty: Option<Type>,
 }
 
 impl ParseAst for Branch {
-    fn parse(token: Pair<Rule>) -> Result<Self> {
+    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
         assert!(token.as_rule() == Rule::branch);
 
         let mut tokens = token.into_inner();
-        let test: Expr = ParseAst::parse(tokens.next().unwrap())?;
-        let on_true: Scope = ParseAst::parse(tokens.next().unwrap())?;
-        let on_false: Scope = ParseAst::parse(tokens.next().unwrap())?;
+        let (test, test_span) = Expr::parse_spanned(tokens.next().unwrap(), vars)?;
+        let on_true = Scope::parse(tokens.next().unwrap(), vars)?;
+        let (on_false, on_false_span) = Scope::parse_spanned(tokens.next().unwrap(), vars)?;
 
-        let ty = on_true.type_of();
-        match (test.type_of(), ty == on_false.type_of()) {
-            (Type::Bool, true) => {}
-            (_, true) => return Err(Error::TypeMismatch(on_true.type_of(), on_false.type_of())),
-            (ty, _) => return Err(Error::TypeMismatch(Type::Bool, ty)),
-        }
+        let ty_true = on_true.type_of_checked();
+        let ty_false = on_false.type_of_checked();
+
+        let ty = match (
+            test.type_of_checked(),
+            ty_true,
+            ty_false,
+            ty_true == ty_false,
+        ) {
+            (Some(Type::Bool), Some(_), Some(_), true) => ty_true,
+            (Some(ty), Some(_), Some(_), true) => {
+                return Err(Error::new_type_mismatch(test_span, Type::Bool, ty))
+            }
+            (Some(_), Some(ty_true), Some(ty_false), false) => {
+                return Err(Error::new_type_mismatch(on_false_span, ty_true, ty_false))
+            }
+            (None, _, _, _) | (_, None, _, _) | (_, _, None, _) => None,
+        };
 
         Ok(Self {
             internal: Box::new(BranchInternal {
@@ -40,13 +51,14 @@ impl ParseAst for Branch {
                 on_true,
                 on_false,
             }),
+
             ty,
         })
     }
 }
 
 impl TypeOf for Branch {
-    fn type_of(&self) -> Type {
+    fn type_of_checked(&self) -> Option<Type> {
         self.ty
     }
 }

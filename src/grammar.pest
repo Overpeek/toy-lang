@@ -1,6 +1,6 @@
-keyword     =  { "let" | "fn" | "if" | "else" | "true" | "false" }
+keyword     =  { "as" | "let" | "fn" | "if" | "else" | "true" | "false" }
 
-lit         = _{ float | int }
+lit         = _{ float | int | bool }
     int     = @{ (add | sub)? ~ ASCII_DIGIT+ }
     float   = @{ int ~ "." ~ ASCII_DIGIT+ }
     bool    =  { "true" | "false" }
@@ -19,9 +19,10 @@ unary_op    = _{ plus | neg }
     neg     =  { "-" }
     // not     =  { "!" }
 
-term        =  { lit | "(" ~ expr ~ ")" | branch | call | access }
+term        =  { /* convert | */ lit | "(" ~ expr ~ ")" | branch | call | access }
     access  =  { ident }
     branch  =  { "if" ~ expr ~ scope ~ "else" ~ scope }
+    // convert =  { term ~ "as" ~ ident }
     call    =  { ident ~ "()" }
 
 expr        =  { _term ~ (binary_op ~ _term)* }

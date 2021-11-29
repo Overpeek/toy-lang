@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::ast::{self, Ident};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -42,7 +42,7 @@ impl Compiler {
         Self::default()
     }
 
-    pub fn module(&self) -> CompilerModule<'_> {
+    pub fn module(&mut self, ast: &ast::Module) -> CompilerModule<'_> {
         let context = &self.context;
         let module = context.create_module("repl");
         let builder = context.create_builder();
@@ -58,103 +58,13 @@ impl Compiler {
         fpmb.populate_lto_pass_manager(&lpm, true, true);
         fpmb.populate_module_pass_manager(&mpm);
         fpmb.populate_function_pass_manager(&fpm);
-
-        /* fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass();
-        fpm.add_gvn_pass();
-        fpm.add_cfg_simplification_pass();
-
-        fpm.add_basic_alias_analysis_pass();
-        fpm.add_promote_memory_to_register_pass();
-        fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass(); */
-
         fpm.initialize();
 
         let engine = module
             .create_jit_execution_engine(OptimizationLevel::Aggressive)
             .unwrap();
 
-        // TMP
-        let fn_type = context.void_type().fn_type(&[], false);
-        let proto = module.add_function("main", fn_type, None);
-        let entry = context.append_basic_block(proto, "entry");
-        builder.position_at_end(entry);
-
-        let i128_type = context.i128_type();
-        let str_type = context.i8_type().ptr_type(AddressSpace::Generic);
-        let i32_type = context.i32_type();
-        let c_zero = i128_type.const_int(0, false);
-        let c_one = i128_type.const_int(1, false);
-        let c_two = i128_type.const_int(2, false);
-        let c_arr = i128_type.const_array(&[c_zero, c_one]);
-
-        // let format_str = unsafe { builder.build_global_string("%d", "format") };
-        // let format_str = context.const_string(b"%d\0", true);
-        // let format_str_chars = b"%d\0".map(|c| context.i8_type().const_int(c as u64, false));
-        // let format_str = context.i8_type().const_array(&format_str_chars);
-        let format_str = builder
-            .build_global_string_ptr("%d\n", "format str")
-            .as_pointer_value();
-
-        let printf_type = context
-            .i32_type()
-            .fn_type(&[str_type.into(), i128_type.into()], false);
-        let printf = module.add_function("printf", printf_type, Some(Linkage::External));
-
-        /* let f_alloca = builder.build_array_alloca(f_i128, f_two, "f");
-        let f = builder
-            .build_load(f_alloca, "load f_alloca")
-            .into_array_value(); */
-        let f0 = builder.build_alloca(i128_type, "f0");
-        let f1 = builder.build_alloca(i128_type, "f1");
-        /* let i = builder
-        .build_load(i_alloca, "load i_alloca")
-        .into_int_value(); */
-        // builder.build_;
-        /* builder.build_store(f, f_arr); */
-        builder.build_store(f0, c_zero);
-        builder.build_store(f1, c_one);
-
-        {
-            let r#loop = context.append_basic_block(proto, "loop");
-            builder.build_unconditional_branch(r#loop);
-            builder.position_at_end(r#loop);
-
-            let vf0 = builder.build_load(f0, "load f0").into_int_value();
-            let vf1 = builder.build_load(f1, "load f1").into_int_value();
-
-            builder.build_call(printf, &[format_str.into(), vf0.into()], "call printf0");
-            builder.build_call(printf, &[format_str.into(), vf1.into()], "call printf1");
-
-            // f0 += f1;
-            // f1 += f0;
-            let vf0 = builder.build_int_add(vf0, vf1, "sum f0 f1");
-            let vf1 = builder.build_int_add(vf0, vf1, "sum f1 f0");
-
-            builder.build_store(f0, vf0);
-            builder.build_store(f1, vf1);
-
-            builder.build_unconditional_branch(r#loop);
-            {
-                let exit = context.append_basic_block(proto, "exit");
-                // builder.build_unconditional_branch(exit);
-                builder.position_at_end(exit);
-                builder.build_return(None);
-            }
-        }
-
-        /* builder.position_at_end(entry);
-        builder.build_return(None); */
-
-        assert!(proto.verify(true));
-        fpm.run_on(&proto);
-        mpm.run_on(&module);
-        lpm.run_on(&module);
-        module.print_to_file("debug.ll").unwrap();
-        log::debug!("LLVM IR: {}", module.print_to_string().to_string());
-
-        CompilerModule {
+        let mut module = CompilerModule {
             context,
             module,
             builder,
@@ -167,7 +77,20 @@ impl Compiler {
             main: None,
 
             functions: HashMap::new(),
+        };
+
+        module.compile_mod(ast);
+        module.dump();
+
+        // load the main function
+        module.main = unsafe {
+            module
+                .engine
+                .get_function::<unsafe extern "C" fn() -> f64>("main")
         }
+        .ok();
+
+        module
     }
 }
 
@@ -182,34 +105,19 @@ impl<'ctx> CompilerModule<'ctx> {
         log::debug!("LLVM IR: {}", self.module.print_to_string().to_string());
     }
 
-    pub fn compile(&mut self, ast: &ast::Module) {
-        todo!()
-        /* self.compile_mod(&ast.module) */
-    }
-
-    /* fn compile_mod(&mut self, module: &ast::Module) {
+    fn compile_mod(&mut self, module: &ast::Module) {
         log::debug!("compiling module");
 
-        for function in module.iter() {
+        for function in module.functions.values() {
             self.compile_fn(function);
         }
-
-        self.mpm.run_on(&self.module);
-        self.lpm.run_on(&self.module);
-        log::debug!("LLVM IR: {}", self.module.print_to_string().to_string());
-
-        self.main = unsafe {
-            self.engine
-                .get_function::<unsafe extern "C" fn() -> f64>("main")
-        }
-        .ok();
     }
 
     fn compile_fn(&mut self, function: &ast::Function) -> FunctionValue<'ctx> {
-        log::debug!("compiling fn: '{}'", function.0);
+        log::debug!("compiling fn: '{}'", function.internal.name);
 
-        let name = &function.0;
-        let scope = &function.2;
+        let name = &function.internal.name;
+        let scope = &function.internal.scope;
 
         // function prototype and block
         let proto = self.compile_fn_proto(name);
@@ -224,19 +132,19 @@ impl<'ctx> CompilerModule<'ctx> {
         // verification
         assert!(proto.verify(true));
         self.fpm.run_on(&proto);
-        self.functions.insert(name.clone(), proto);
+        self.functions.insert(name.value.clone(), proto);
         proto
     }
 
-    fn compile_fn_proto(&self, name: &str) -> FunctionValue<'ctx> {
+    fn compile_fn_proto(&self, name: &Ident) -> FunctionValue<'ctx> {
         let fn_type = self.context.f64_type().fn_type(&[], false);
-        self.module.add_function(name, fn_type, None)
+        self.module.add_function(name.value.as_str(), fn_type, None)
     }
 
     fn compile_scope(&self, scope: &ast::Scope) -> FloatValue {
         let mut last = self.context.f64_type().const_float(0.0);
 
-        for statement in scope {
+        for statement in scope.statements.iter() {
             last = self.compile_statement(statement);
         }
 
@@ -249,7 +157,7 @@ impl<'ctx> CompilerModule<'ctx> {
     }
 
     fn compile_expr(&self, expr: &ast::Expr) -> FloatValue {
-        let mut lhs = self.compile_term(&expr.0);
+        let mut lhs = self.compile_term(expr.internal.);
         for (op, rhs) in expr.1.iter() {
             let rhs = self.compile_term(rhs);
             match op {
@@ -310,5 +218,5 @@ impl<'ctx> CompilerModule<'ctx> {
             BasicValueEnum::FloatValue(float) => float,
             _ => unimplemented!(),
         }
-    } */
+    }
 }
