@@ -5,6 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::compiler::Optimize;
+
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
@@ -12,9 +14,9 @@ extern crate pest_derive;
 pub mod ast;
 pub mod compiler;
 
-fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
-    setup: F1,
-    bench: F2,
+fn bench<T, U: Debug + PartialEq, F1: FnMut() -> T, F2: FnMut(&mut T) -> U>(
+    mut setup: F1,
+    mut bench: F2,
     expected: U,
 ) -> (Duration, usize) {
     let instant = Instant::now();
@@ -37,17 +39,15 @@ fn bench<T, U: Debug + PartialEq, F1: Fn() -> T, F2: Fn(&mut T) -> U>(
 }
 
 #[allow(unused)]
-fn benchmark() {
+fn benchmark(opt: Optimize) {
     println!("Benchmarking ...");
     let compiler = Compiler::default();
 
     // compiler
     let (c_setup, c_runs) = bench(
         || {
-            let mut module = compiler.module();
             let ast = ast::parse_file("tests/script.tls").unwrap();
-            module.compile(&ast);
-            module
+            compiler.module(&ast, opt)
         },
         |module| module.exec(),
         -46845.0,
@@ -82,13 +82,12 @@ fn benchmark() {
 }
 
 #[allow(unused)]
-fn run() {
+fn run(opt: Optimize) {
     println!("Running ...");
-    let compiler = Compiler::default();
-    let mut module = compiler.module();
     let ast = ast::parse_file("tests/script.tls").unwrap();
+    let compiler = Compiler::default();
+    let mut module = compiler.module(&ast, opt);
 
-    module.compile(&ast);
     let result = module.exec();
 
     println!("Result: {}", result);
@@ -96,6 +95,25 @@ fn run() {
 
 fn main() {
     env_logger::init();
+
+    let mut args = std::env::args();
+    let _ = args.next();
+
+    let mut opt = Optimize::O2;
+
+    for arg in args {
+        let arg = arg.as_str();
+        if let Some((_, rhs)) = arg.split_once("-O") {
+            opt = match rhs {
+                "0" => Optimize::O0,
+                "1" => Optimize::O1,
+                "2" => Optimize::O2,
+                "3" => Optimize::O3,
+                other => panic!("Opt level {} does not exist", other),
+            }
+        }
+    }
+
     // benchmark();
-    run();
+    run(opt);
 }
