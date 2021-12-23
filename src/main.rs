@@ -84,10 +84,10 @@ fn benchmark(opt: Optimize) {
 #[allow(unused)]
 fn run(opt: Optimize) {
     println!("Running ...");
+
     let ast = ast::parse_file("tests/script.tls").unwrap();
     let compiler = Compiler::default();
     let mut module = compiler.module(&ast, opt);
-
     let result = module.exec();
 
     println!("Result: {}", result);

@@ -1,4 +1,4 @@
-use crate::ast::{self, Ident};
+use crate::ast;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -130,12 +130,20 @@ impl<'ctx> CompilerModule<'ctx> {
         let function_protos: Vec<(FunctionValue, &ast::Function)> = module
             .functions
             .values()
-            .map(|function| (self.compile_fn_proto(&function.internal.name), function))
+            .map(|function| {
+                let name = function.internal.name.value.clone();
+                let proto = self.compile_fn_proto(name.as_str());
+                self.functions.insert(name, proto);
+                (proto, function)
+            })
             .collect();
 
-        for (proto, function) in function_protos.into_iter() {
+        // fix wrong clippy warning `needless_collect`
+        function_protos.len();
+
+        function_protos.into_iter().for_each(|(proto, function)| {
             self.compile_fn(proto, function);
-        }
+        });
     }
 
     fn compile_fn(
@@ -165,11 +173,9 @@ impl<'ctx> CompilerModule<'ctx> {
         proto
     }
 
-    fn compile_fn_proto(&mut self, name: &Ident) -> FunctionValue<'ctx> {
+    fn compile_fn_proto(&mut self, name: &str) -> FunctionValue<'ctx> {
         let fn_type = self.context.f64_type().fn_type(&[], false);
-        let proto = self.module.add_function(name.value.as_str(), fn_type, None);
-        self.functions.insert(name.value.clone(), proto);
-        proto
+        self.module.add_function(name, fn_type, None)
     }
 
     fn compile_scope(&self, scope: &ast::Scope) -> FloatValue<'ctx> {
