@@ -7,17 +7,22 @@ lit         = _{ float | int | bool }
 
 ident       = @{ !keyword ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 
-binary_op   = _{ add | sub | mul | div }
+binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le }
     add     =  { "+" }
     sub     =  { "-" }
     mul     =  { "*" }
     div     =  { "/" }
-    // eq      =  { "==" }
+    eq      =  { "==" }
+    ne      =  { "!=" }
+    gt      =  { ">" }
+    ge      =  { ">=" }
+    lt      =  { "<" }
+    le      =  { "<=" }
 
-unary_op    = _{ plus | neg }
+unary_op    = _{ plus | neg | not }
     plus    =  { "+" }
     neg     =  { "-" }
-    // not     =  { "!" }
+    not     =  { "!" }
 
 term        =  { /* convert | */ lit | "(" ~ expr ~ ")" | branch | call | access }
     access  =  { ident }

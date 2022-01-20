@@ -3,11 +3,11 @@ use pest::{
     iterators::{Pair, Pairs},
     Parser, Span,
 };
+use std::hash::Hash;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
 };
-use std::{hash::Hash, path::Path};
 
 pub use self::access::*;
 pub use self::assign::*;
@@ -53,10 +53,10 @@ pub fn parse(input: &str) -> Result<Module> {
     ParseAst::parse(tokens.next().unwrap(), &mut globals)
 }
 
-pub fn parse_file<P: AsRef<Path>>(path: P) -> ParseFileResult {
+/* pub fn parse_file<P: AsRef<Path>>(path: P) -> ParseFileResult {
     let file = std::fs::read_to_string(path).map_err(ParseFileError::IoError)?;
     parse(&file).map_err(ParseFileError::ParseError)
-}
+} */
 
 //
 
@@ -107,7 +107,7 @@ impl VisibleVars {
 // Error type
 // ----------
 
-pub enum ParseFileError {
+/* pub enum ParseFileError {
     IoError(std::io::Error),
     ParseError(Error),
 }
@@ -127,7 +127,7 @@ impl Display for ParseFileError {
             Self::IoError(err) => Display::fmt(err, f),
         }
     }
-}
+} */
 
 pub struct Error {
     error: PestError<Rule>,
@@ -230,14 +230,10 @@ where
     }
 }
 
-trait TypeOf {
+pub trait TypeOf {
     fn type_of_checked(&self) -> Option<Type>;
 
     fn type_of(&self) -> Type {
         self.type_of_checked().expect("Wasn't type checked")
     }
-}
-
-trait Typed<T> {
-    fn typed(self) -> T;
 }

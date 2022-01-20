@@ -10,8 +10,19 @@ lazy_static! {
     static ref PREC_CLIMBER: PrecClimber<Rule> = {
         use pest::prec_climber::Assoc::*;
         PrecClimber::new(vec![
+            //
             Operator::new(Rule::add, Left) | Operator::new(Rule::sub, Left),
             Operator::new(Rule::mul, Left) | Operator::new(Rule::div, Left),
+
+            //
+            Operator::new(Rule::eq, Left)
+                | Operator::new(Rule::ne, Left)
+                | Operator::new(Rule::gt, Left)
+                | Operator::new(Rule::ge, Left)
+                | Operator::new(Rule::lt, Left)
+                | Operator::new(Rule::le, Left),
+
+            //
         ])
     };
 }

@@ -38,6 +38,12 @@ impl ParseAst for Function {
     }
 }
 
+impl TypeOf for Function {
+    fn type_of_checked(&self) -> Option<Type> {
+        self.ty
+    }
+}
+
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "fn {}() {}", self.internal.name, self.internal.scope)

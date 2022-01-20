@@ -10,6 +10,9 @@ pub enum UnaryOp {
 
     /// '-' <operand>
     Neg,
+
+    /// '!' <operand>
+    Not,
 }
 
 impl Display for UnaryOp {
@@ -17,6 +20,7 @@ impl Display for UnaryOp {
         match self {
             UnaryOp::Plus => write!(f, "+"),
             UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
         }
     }
 }
