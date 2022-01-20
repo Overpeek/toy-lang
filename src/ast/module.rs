@@ -1,4 +1,4 @@
-use super::{function::Function, ParseAst, Result, Rule};
+use super::{function::Function, ParseAst, Result, Rule, VisibleVars};
 use pest::iterators::Pair;
 use std::{collections::HashMap, fmt::Display};
 
@@ -8,15 +8,15 @@ pub struct Module {
 }
 
 impl ParseAst for Module {
-    fn parse(token: Pair<Rule>) -> Result<Self> {
+    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
         assert!(token.as_rule() == Rule::module);
 
         Ok(Self {
             functions: token
                 .into_inner()
                 .map(|token| {
-                    let func: Function = ParseAst::parse(token)?;
-                    Ok((func.internal.name.clone(), func))
+                    let func: Function = ParseAst::parse(token, vars)?;
+                    Ok((func.internal.name.clone().value, func))
                 })
                 .collect::<Result<_>>()?,
         })

@@ -1,6 +1,5 @@
-use std::fmt::Display;
-
 use super::TypeOf;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Lit {
@@ -18,6 +17,10 @@ impl TypeOf for Lit {
             Lit::Bool(_) => Type::Bool,
             Lit::Unit(_) => Type::Unit,
         }
+    }
+
+    fn type_of_checked(&self) -> Option<Type> {
+        Some(self.type_of())
     }
 }
 
@@ -39,11 +42,12 @@ pub enum Type {
 impl Display for Lit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Lit::F64(_) => todo!(),
-            Lit::I64(_) => todo!(),
-            Lit::Bool(_) => todo!(),
-            Lit::Unit(_) => todo!(),
+            Lit::F64(v) => v as &dyn Display,
+            Lit::I64(v) => v as _,
+            Lit::Bool(v) => v as _,
+            Lit::Unit(_) => &"()",
         }
+        .fmt(f)
     }
 }
 

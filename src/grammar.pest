@@ -1,27 +1,33 @@
-keyword     =  { "let" | "fn" | "if" | "else" | "true" | "false" }
+keyword     =  { "as" | "let" | "fn" | "if" | "else" | "true" | "false" }
 
-lit         = _{ float | int }
+lit         = _{ float | int | bool }
     int     = @{ (add | sub)? ~ ASCII_DIGIT+ }
     float   = @{ int ~ "." ~ ASCII_DIGIT+ }
     bool    =  { "true" | "false" }
 
 ident       = @{ !keyword ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 
-binary_op   = _{ add | sub | mul | div }
+binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le }
     add     =  { "+" }
     sub     =  { "-" }
     mul     =  { "*" }
     div     =  { "/" }
-    // eq      =  { "==" }
+    eq      =  { "==" }
+    ne      =  { "!=" }
+    gt      =  { ">" }
+    ge      =  { ">=" }
+    lt      =  { "<" }
+    le      =  { "<=" }
 
-unary_op    = _{ plus | neg }
+unary_op    = _{ plus | neg | not }
     plus    =  { "+" }
     neg     =  { "-" }
-    // not     =  { "!" }
+    not     =  { "!" }
 
-term        =  { lit | "(" ~ expr ~ ")" | branch | call | access }
+term        =  { /* convert | */ lit | "(" ~ expr ~ ")" | branch | call | access }
     access  =  { ident }
     branch  =  { "if" ~ expr ~ scope ~ "else" ~ scope }
+    // convert =  { term ~ "as" ~ ident }
     call    =  { ident ~ "()" }
 
 expr        =  { _term ~ (binary_op ~ _term)* }
@@ -41,8 +47,11 @@ input       = _{ SOI ~ module ~ EOI }
 
 
 
-WHITESPACE  = _{ " " | "\t" | "\n" | "\r\n" }
-COMMENT     = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+WHITESPACE  = _{ " " | "\t" | newline }
+    newline = _{ "\n" | "\r\n" }
+COMMENT     = _{ block | inline }
+    block   = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+    inline  = _{ "//" ~ (!newline ~ ANY)* ~ newline }
 
 /* int         =  { (add | sub)? ~ ASCII_DIGIT+ }
 float       = @{ int ~ "." ~ ASCII_DIGIT+ }

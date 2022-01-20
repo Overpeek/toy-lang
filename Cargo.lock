@@ -1667,6 +1667,7 @@ dependencies = [
  "log",
  "pest",
  "pest_derive",
+ "rand 0.8.4",
 ]
 
 [[package]]

@@ -1,6 +1,5 @@
+use super::{Expr, ParseAst, Result, Rule, Type, VisibleVars};
 use crate::ast::{Error, TypeOf};
-
-use super::{Expr, ParseAst, Result, Rule, Type};
 use pest::iterators::Pair;
 use std::fmt::Display;
 
@@ -11,6 +10,9 @@ pub enum UnaryOp {
 
     /// '-' <operand>
     Neg,
+
+    /// '!' <operand>
+    Not,
 }
 
 impl Display for UnaryOp {
@@ -18,6 +20,7 @@ impl Display for UnaryOp {
         match self {
             UnaryOp::Plus => write!(f, "+"),
             UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
         }
     }
 }
@@ -26,12 +29,15 @@ impl Display for UnaryOp {
 pub struct UnaryExpr {
     pub operator: UnaryOp,
     pub operand: Box<Expr>,
-    ty: Type,
+
+    ty: Option<Type>,
 }
 
 impl ParseAst for UnaryExpr {
-    fn parse(token: Pair<Rule>) -> Result<Self> {
+    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
         assert!(token.as_rule() == Rule::unary);
+
+        let span = token.as_span();
 
         let mut tokens = token.into_inner();
         let operator = tokens.next().unwrap();
@@ -42,24 +48,28 @@ impl ParseAst for UnaryExpr {
         };
 
         let operand = tokens.next().unwrap();
-        let operand = Box::<Expr>::new(ParseAst::parse(operand)?);
+        let operand = Box::<Expr>::new(ParseAst::parse(operand, vars)?);
 
-        let ty = match (operator, operand.type_of()) {
-            (UnaryOp::Plus, Type::I64) => Type::I64,
-            (UnaryOp::Neg, Type::F64) => Type::F64,
-            (op, rhs) => return Err(Error::InvalidUnaryOp(op, rhs)),
+        let ty = match (operator, operand.type_of_checked()) {
+            (UnaryOp::Plus, Some(Type::F64)) => Some(Type::F64),
+            (UnaryOp::Plus, Some(Type::I64)) => Some(Type::I64),
+            (UnaryOp::Neg, Some(Type::F64)) => Some(Type::F64),
+            (UnaryOp::Neg, Some(Type::I64)) => Some(Type::I64),
+            (op, Some(rhs)) => return Err(Error::new_invalid_unary_op(span, op, rhs)),
+            (_, None) => None,
         };
 
         Ok(Self {
             operator,
             operand,
+
             ty,
         })
     }
 }
 
 impl TypeOf for UnaryExpr {
-    fn type_of(&self) -> Type {
+    fn type_of_checked(&self) -> Option<Type> {
         self.ty
     }
 }
