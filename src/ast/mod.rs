@@ -5,7 +5,7 @@ use pest::{
     Parser, Span,
 };
 use std::{
-    collections::hash_map::{DefaultHasher, Entry},
+    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
 use std::{
@@ -223,15 +223,12 @@ impl Error {
         )
     }
 
-    pub fn new_rule_mismatch(span: Span, expect: &[Rule], got: Rule) -> Self {
+    pub fn new_rule_mismatch(span: Span, expect: Rule, got: Rule) -> Self {
         Self::new_spanned(
             span,
             format!(
-                "expected rule: '{}' but got: '{:?}'. Internal error {:?}",
-                expect
-                    .iter()
-                    .map(|rule| format!("{:?}", rule))
-                    .collect::<String>(),
+                "expected rule: '{:?}' but got: '{:?}'. Internal error {:?}",
+                expect,
                 got,
                 Backtrace::new()
             ),
@@ -271,14 +268,6 @@ impl Display for Error {
 
 fn match_rule(span: &Span, got: Rule, expect: Rule) -> Result<()> {
     if got == expect {
-        Ok(())
-    } else {
-        Err(Error::new_rule_mismatch(span.clone(), &[expect], got))
-    }
-}
-
-fn match_any_rule(span: &Span, got: Rule, expect: &[Rule]) -> Result<()> {
-    if expect.contains(&got) {
         Ok(())
     } else {
         Err(Error::new_rule_mismatch(span.clone(), expect, got))

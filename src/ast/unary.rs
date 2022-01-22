@@ -107,7 +107,7 @@ impl UnaryExprType {
 }
 
 impl Generic for UnaryExprType {
-    fn eval(self, solver: &mut GenericSolver) -> Result<Type> {
+    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
         match (self.operator, *self.operand) {
             (UnaryOp::Plus, Type::F64) => Ok(Type::F64),
             (UnaryOp::Plus, Type::I64) => Ok(Type::I64),
@@ -116,7 +116,7 @@ impl Generic for UnaryExprType {
 
             (UnaryOp::Not, Type::Bool) => Ok(Type::Bool),
 
-            (operator, Type::Unresolved) => Ok(Type::Unresolved),
+            (_, Type::Unresolved) => Ok(Type::Unresolved),
 
             (op, rhs) => Err(Error::new_invalid_unary_op(
                 Span::new("unreachable", 0, 0).unwrap(),

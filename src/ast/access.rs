@@ -31,13 +31,7 @@ impl<'i> Ast<'i> for Access<'i> {
 }
 
 impl<'i> TypeOf<'i> for Access<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        // log::debug!("{:?}", vars);
-
+    fn type_check_impl(&mut self, vars: &mut VisibleVars, _: &mut GenericSolver<'i>) -> Result<()> {
         let name = self.name.value.as_str();
         self.ty = match vars.get_var(name) {
             Some(ty) => Some(ty),

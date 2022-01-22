@@ -15,11 +15,7 @@ pub enum Lit {
 }
 
 impl<'i> TypeOf<'i> for Lit {
-    fn type_check_impl(
-        &mut self,
-        _: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, _: &mut VisibleVars, _: &mut GenericSolver<'i>) -> Result<()> {
         Ok(())
     }
 
@@ -60,7 +56,7 @@ pub enum Type {
 }
 
 impl Generic for Type {
-    fn eval(self, solver: &mut GenericSolver) -> Result<Type> {
+    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
         Ok(self)
     }
 }

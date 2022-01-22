@@ -173,7 +173,7 @@ impl BinaryExprType {
 }
 
 impl Generic for BinaryExprType {
-    fn eval(self, solver: &mut GenericSolver) -> Result<Type> {
+    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
         match (self.operands.lhs, self.operator, self.operands.rhs) {
             // boolean ops
             (
@@ -196,7 +196,7 @@ impl Generic for BinaryExprType {
             (Type::F64, _, Type::F64) => Ok(Type::F64),
 
             // generic ops
-            (Type::Unresolved, op, Type::Unresolved) => Ok(Type::Unresolved),
+            (Type::Unresolved, _, Type::Unresolved) => Ok(Type::Unresolved),
 
             // invalid ops
             (lhs, op, rhs) => Err(Error::new_invalid_binary_op(

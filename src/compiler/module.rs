@@ -14,12 +14,7 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue},
     OptimizationLevel,
 };
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    path::Path,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 
 //
 
@@ -41,7 +36,6 @@ pub struct Module<'ctx> {
     engine: ExecutionEngine<'ctx>,
     main: Option<JitFunction<unsafe extern "C" fn() -> i64>>,
 
-    pub(super) generic_functions: HashSet<String>,
     pub(super) functions: HashMap<String, FunctionValue<'ctx>>,
     pub(super) function: Rc<RefCell<Option<ScopeVars<'ctx>>>>, // current function and values
 }
@@ -104,7 +98,6 @@ impl<'ctx> Module<'ctx> {
             engine,
             main: None,
 
-            generic_functions: HashSet::new(),
             functions: HashMap::new(),
             function: Rc::new(RefCell::new(None)),
         };

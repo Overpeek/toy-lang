@@ -1,5 +1,3 @@
-use std::collections::btree_map::ValuesMut;
-
 use super::{CodeGen, CodeGenResult};
 use crate::{
     ast::{self, generic_mangle, TypeOf},
