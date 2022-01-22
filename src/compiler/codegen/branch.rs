@@ -21,7 +21,7 @@ use inkwell::types::BasicTypeEnum;
 //                               | E |
 //                               +---+
 
-impl CodeGen for ast::Branch {
+impl<'i> CodeGen for ast::Branch<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         let cond = self.internal.test.code_gen(module)?.expect_bool()?;
         // let const_zero = module.context.f64_type().const_zero();
@@ -63,9 +63,10 @@ impl CodeGen for ast::Branch {
             (Some(result_a), Some(result_b)) => {
                 let ty: BasicTypeEnum = match self.type_of() {
                     ast::Type::F64 => module.context.f64_type().into(),
+                    ast::Type::U64 => module.context.i64_type().into(),
                     ast::Type::I64 => module.context.i64_type().into(),
                     ast::Type::Bool => module.context.bool_type().into(),
-                    ast::Type::Unit => unreachable!(),
+                    ast::Type::Unit | ast::Type::Unresolved => unreachable!(),
                 };
 
                 let phi = module.builder.build_phi(ty, "Branch phi");

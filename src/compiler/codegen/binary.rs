@@ -8,7 +8,7 @@ use inkwell::{
 
 //
 
-impl CodeGen for ast::BinaryExpr {
+impl<'i> CodeGen for ast::BinaryExpr<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         let lhs = self.operands.lhs.code_gen(module)?.unwrap();
         let rhs = self.operands.rhs.code_gen(module)?.unwrap();
@@ -68,6 +68,8 @@ fn binary_float_op<'ctx>(
         Ge => f_cmp(OGE, "BinaryExpr f ge"),
         Lt => f_cmp(OLT, "BinaryExpr f lt"),
         Le => f_cmp(OLE, "BinaryExpr f le"),
+
+        op => todo!("{}", op),
     }
 }
 
@@ -96,5 +98,9 @@ fn binary_int_op<'ctx>(
         Ge => i_cmp(SGE, "BinaryExpr i ge"),
         Lt => i_cmp(SLT, "BinaryExpr i lt"),
         Le => i_cmp(SLE, "BinaryExpr i le"),
+
+        Or => b.build_or(lhs, rhs, "BinaryExpr b or").into(),
+        And => b.build_and(lhs, rhs, "BinaryExpr b and").into(),
+        // op => todo!("{}", op),
     }
 }

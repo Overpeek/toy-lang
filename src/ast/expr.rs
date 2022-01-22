@@ -1,8 +1,12 @@
-use super::{BinaryExpr, ParseAst, Result, Rule, Term, Type, TypeOf, UnaryExpr, VisibleVars};
+use super::{
+    match_rule, Ast, BinaryExpr, GenericSolver, Result, Rule, Term, Type, TypeOf, UnaryExpr,
+    VisibleVars,
+};
 use lazy_static::lazy_static;
 use pest::{
     iterators::Pair,
     prec_climber::{Operator, PrecClimber},
+    Span,
 };
 use std::fmt::Display;
 
@@ -12,6 +16,8 @@ lazy_static! {
         PrecClimber::new(vec![
             //
             Operator::new(Rule::add, Left) | Operator::new(Rule::sub, Left),
+
+            //
             Operator::new(Rule::mul, Left) | Operator::new(Rule::div, Left),
 
             //
@@ -23,73 +29,101 @@ lazy_static! {
                 | Operator::new(Rule::le, Left),
 
             //
+            Operator::new(Rule::and, Left),
+
+            //
+            Operator::new(Rule::or, Left),
         ])
     };
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExprInternal {
-    BinaryExpr(BinaryExpr),
-    UnaryExpr(UnaryExpr),
-    Term(Term),
+pub enum ExprInternal<'i> {
+    BinaryExpr(BinaryExpr<'i>),
+    UnaryExpr(UnaryExpr<'i>),
+    Term(Term<'i>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Expr {
-    pub internal: Box<ExprInternal>,
+pub struct Expr<'i> {
+    pub internal: Box<ExprInternal<'i>>,
 
+    span: Span<'i>,
     ty: Option<Type>,
 }
 
-impl ParseAst for Expr {
-    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
-        assert!(token.as_rule() == Rule::expr);
+impl<'i> Ast<'i> for Expr<'i> {
+    fn span(&self) -> Span<'i> {
+        self.span.clone()
+    }
 
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
         let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::expr)?;
 
         PREC_CLIMBER.climb(
             token.into_inner(),
             |token: Pair<Rule>| match token.as_rule() {
                 Rule::term => {
-                    let inner = Term::parse(token, vars)?;
-                    let ty = inner.type_of_checked();
+                    let inner = Term::parse(token)?;
 
                     Ok(Expr {
                         internal: Box::new(ExprInternal::Term(inner)),
-                        ty,
+
+                        span: span.clone(),
+                        ty: None,
                     })
                 }
                 Rule::unary => {
-                    let inner = UnaryExpr::parse(token, vars)?;
-                    let ty = inner.type_of_checked();
+                    let inner = UnaryExpr::parse(token)?;
 
                     Ok(Expr {
                         internal: Box::new(ExprInternal::UnaryExpr(inner)),
-                        ty,
+
+                        span: span.clone(),
+                        ty: None,
                     })
                 }
                 _ => unreachable!("{:?}", token),
             },
             |lhs: Result<Expr>, op: Pair<Rule>, rhs: Result<Expr>| {
                 let inner = BinaryExpr::new(span.clone(), lhs?, op, rhs?)?;
-                let ty = inner.type_of_checked();
 
                 Ok(Expr {
                     internal: Box::new(ExprInternal::BinaryExpr(inner)),
-                    ty,
+
+                    span: span.clone(),
+                    ty: None,
                 })
             },
         )
     }
 }
 
-impl TypeOf for Expr {
-    fn type_of_checked(&self) -> Option<Type> {
+impl<'i> TypeOf<'i> for Expr<'i> {
+    fn type_check_impl(
+        &mut self,
+        vars: &mut VisibleVars,
+        solver: &mut GenericSolver<'i>,
+    ) -> Result<()> {
+        let internal = match self.internal.as_mut() {
+            ExprInternal::BinaryExpr(expr) => expr as &mut dyn TypeOf,
+            ExprInternal::UnaryExpr(expr) => expr as _,
+            ExprInternal::Term(term) => term as _,
+        };
+
+        internal.type_check(vars, solver)?;
+        self.ty = Some(internal.type_of());
+
+        Ok(())
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
         self.ty
     }
 }
 
-impl Display for Expr {
+impl<'i> Display for Expr<'i> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.internal.as_ref() {
             ExprInternal::BinaryExpr(v) => v as &dyn Display,

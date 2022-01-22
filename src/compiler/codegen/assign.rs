@@ -3,7 +3,7 @@ use crate::{ast, compiler::module::Module};
 
 //
 
-impl CodeGen for ast::Assign {
+impl<'i> CodeGen for ast::Assign<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         let value = self.expr.code_gen(module)?;
 

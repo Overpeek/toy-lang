@@ -1,9 +1,8 @@
+use colorful::Colorful;
 use std::{
     fmt::Debug,
     time::{Duration, Instant},
 };
-
-use colorful::Colorful;
 use toy_lang::compiler::{instance::Compiler, optimizer::OptLevel};
 
 //
@@ -45,7 +44,7 @@ fn benchmark(opt: OptLevel) {
     let (c_setup, c_runs) = bench(
         || compiler.module_from_path(SCRIPT_PATH).unwrap(),
         |module| module.exec().unwrap(),
-        0,
+        987,
     );
 
     println!(

@@ -1,49 +1,36 @@
-use super::{Expr, ParseAst, Result, Rule, Scope, VisibleVars};
-use crate::ast::{Error, Type, TypeOf};
-use pest::iterators::Pair;
+use super::{Ast, Expr, GenericSolver, Result, Rule, Scope, VisibleVars};
+use crate::ast::{match_rule, Error, Type, TypeOf};
+use pest::{iterators::Pair, Span};
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BranchInternal {
-    pub test: Expr,
-    pub on_true: Scope,
-    pub on_false: Scope,
+pub struct BranchInternal<'i> {
+    pub test: Expr<'i>,
+    pub on_true: Scope<'i>,
+    pub on_false: Scope<'i>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Branch {
-    pub internal: Box<BranchInternal>,
+pub struct Branch<'i> {
+    pub internal: Box<BranchInternal<'i>>,
 
+    span: Span<'i>,
     ty: Option<Type>,
 }
 
-impl ParseAst for Branch {
-    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
-        assert!(token.as_rule() == Rule::branch);
+impl<'i> Ast<'i> for Branch<'i> {
+    fn span(&self) -> Span<'i> {
+        self.span.clone()
+    }
 
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
+        let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::branch)?;
         let mut tokens = token.into_inner();
-        let (test, test_span) = Expr::parse_spanned(tokens.next().unwrap(), vars)?;
-        let on_true = Scope::parse(tokens.next().unwrap(), vars)?;
-        let (on_false, on_false_span) = Scope::parse_spanned(tokens.next().unwrap(), vars)?;
 
-        let ty_true = on_true.type_of_checked();
-        let ty_false = on_false.type_of_checked();
-
-        let ty = match (
-            test.type_of_checked(),
-            ty_true,
-            ty_false,
-            ty_true == ty_false,
-        ) {
-            (Some(Type::Bool), Some(_), Some(_), true) => ty_true,
-            (Some(ty), Some(_), Some(_), true) => {
-                return Err(Error::new_type_mismatch(test_span, Type::Bool, ty))
-            }
-            (Some(_), Some(ty_true), Some(ty_false), false) => {
-                return Err(Error::new_type_mismatch(on_false_span, ty_true, ty_false))
-            }
-            (None, _, _, _) | (_, None, _, _) | (_, _, None, _) => None,
-        };
+        let test = Expr::parse(tokens.next().unwrap())?;
+        let on_true = Scope::parse(tokens.next().unwrap())?;
+        let on_false = Scope::parse(tokens.next().unwrap())?;
 
         Ok(Self {
             internal: Box::new(BranchInternal {
@@ -52,18 +39,53 @@ impl ParseAst for Branch {
                 on_false,
             }),
 
-            ty,
+            span,
+            ty: None,
         })
     }
 }
 
-impl TypeOf for Branch {
-    fn type_of_checked(&self) -> Option<Type> {
+impl<'i> TypeOf<'i> for Branch<'i> {
+    fn type_check_impl(
+        &mut self,
+        vars: &mut VisibleVars,
+        solver: &mut GenericSolver<'i>,
+    ) -> Result<()> {
+        self.internal.test.type_check(vars, solver)?;
+        self.internal.on_true.type_check(vars, solver)?;
+        self.internal.on_false.type_check(vars, solver)?;
+
+        let ty_test = self.internal.test.type_of();
+        let ty_true = self.internal.on_true.type_of();
+        let ty_false = self.internal.on_false.type_of();
+
+        self.ty = match (ty_test, ty_true, ty_false, ty_true == ty_false) {
+            (Type::Bool, _, _, true) => Some(ty_true),
+            (ty, _, _, true) => {
+                return Err(Error::new_type_mismatch(
+                    self.internal.test.span(),
+                    &Type::Bool,
+                    &ty,
+                ))
+            }
+            (_, ty_true, ty_false, false) => {
+                return Err(Error::new_type_mismatch(
+                    self.internal.on_false.span(),
+                    &ty_true,
+                    &ty_false,
+                ))
+            }
+        };
+
+        Ok(())
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
         self.ty
     }
 }
 
-impl Display for Branch {
+impl<'i> Display for Branch<'i> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

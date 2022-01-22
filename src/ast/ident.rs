@@ -1,24 +1,30 @@
+use super::{match_rule, Ast, Result, Rule};
+use pest::{iterators::Pair, Span};
 use std::fmt::Display;
 
-use super::{ParseAst, Result, Rule, VisibleVars};
-use pest::iterators::Pair;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ident {
+pub struct Ident<'i> {
     pub value: String,
+    span: Span<'i>,
 }
 
-impl ParseAst for Ident {
-    fn parse(token: Pair<Rule>, _: &mut VisibleVars) -> Result<Self> {
-        assert!(token.as_rule() == Rule::ident);
+impl<'i> Ast<'i> for Ident<'i> {
+    fn span(&self) -> Span<'i> {
+        self.span.clone()
+    }
+
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
+        let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::ident)?;
 
         Ok(Ident {
             value: token.as_str().into(),
+            span,
         })
     }
 }
 
-impl Display for Ident {
+impl<'i> Display for Ident<'i> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.value.fmt(f)
     }

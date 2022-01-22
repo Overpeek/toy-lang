@@ -1,62 +1,84 @@
-use crate::ast::Lit;
+use crate::ast::{match_rule, Lit};
 
-use super::{Access, Branch, Call, Expr, ParseAst, Result, Rule, Type, TypeOf, VisibleVars};
-use pest::iterators::Pair;
+use super::{
+    Access, Ast, Branch, Call, Expr, GenericSolver, Result, Rule, Type, TypeOf, VisibleVars,
+};
+use pest::{iterators::Pair, Span};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TermInternal {
+pub enum TermInternal<'i> {
     Lit(Lit),
-    Expr(Expr),
-    Branch(Branch),
-    Access(Access),
-    Call(Call),
+    Expr(Expr<'i>),
+    Branch(Branch<'i>),
+    Access(Access<'i>),
+    Call(Call<'i>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Term {
-    pub internal: Box<TermInternal>,
+pub struct Term<'i> {
+    pub internal: Box<TermInternal<'i>>,
 
+    span: Span<'i>,
     ty: Option<Type>,
 }
 
-impl ParseAst for Term {
-    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
-        assert!(token.as_rule() == Rule::term);
+impl<'i> Ast<'i> for Term<'i> {
+    fn span(&self) -> Span<'i> {
+        self.span.clone()
+    }
 
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
+        let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::term)?;
         let mut tokens = token.into_inner();
-        let token = tokens.next().unwrap();
 
+        let token = tokens.next().unwrap();
         let internal = Box::new(match token.as_rule() {
             Rule::int => TermInternal::Lit(Lit::I64(token.as_str().parse().unwrap())),
             Rule::float => TermInternal::Lit(Lit::F64(token.as_str().parse().unwrap())),
             Rule::bool => TermInternal::Lit(Lit::Bool(token.as_str().parse().unwrap())),
-            Rule::expr => TermInternal::Expr(ParseAst::parse(token, vars)?),
-            Rule::branch => TermInternal::Branch(ParseAst::parse(token, vars)?),
-            Rule::access => TermInternal::Access(ParseAst::parse(token, vars)?),
-            Rule::call => TermInternal::Call(ParseAst::parse(token, vars)?),
+            Rule::expr => TermInternal::Expr(Ast::parse(token)?),
+            Rule::branch => TermInternal::Branch(Ast::parse(token)?),
+            Rule::access => TermInternal::Access(Ast::parse(token)?),
+            Rule::call => TermInternal::Call(Ast::parse(token)?),
             other => unreachable!("{:?}", other),
         });
-        let ty = match internal.as_ref() {
-            TermInternal::Lit(v) => v as &dyn TypeOf,
+
+        Ok(Term {
+            internal,
+            span,
+            ty: None,
+        })
+    }
+}
+
+impl<'i> TypeOf<'i> for Term<'i> {
+    fn type_check_impl(
+        &mut self,
+        vars: &mut VisibleVars,
+        solver: &mut GenericSolver<'i>,
+    ) -> Result<()> {
+        let internal = match self.internal.as_mut() {
+            TermInternal::Lit(v) => v as &mut dyn TypeOf<'i>,
             TermInternal::Expr(v) => v as _,
             TermInternal::Branch(v) => v as _,
             TermInternal::Access(v) => v as _,
             TermInternal::Call(v) => v as _,
-        }
-        .type_of_checked();
+        };
 
-        Ok(Term { internal, ty })
+        internal.type_check(vars, solver)?;
+        self.ty = Some(internal.type_of());
+
+        Ok(())
     }
-}
 
-impl TypeOf for Term {
-    fn type_of_checked(&self) -> Option<Type> {
+    fn type_of_impl(&self) -> Option<Type> {
         self.ty
     }
 }
 
-impl Display for Term {
+impl<'i> Display for Term<'i> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.internal.as_ref() {
             TermInternal::Lit(v) => v as &dyn Display,

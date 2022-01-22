@@ -1,13 +1,21 @@
-keyword     =  { "as" | "let" | "fn" | "if" | "else" | "true" | "false" }
+keyword     =  { "as" | "let" | "fn" | "if" | "else" | ty | bool_lit }
+    ty      =  { unit_ty | bool_ty | u_ty | i_ty | f_ty /* | gen */ }
+    // gen     =  { "?" }
+    unit_ty =  { "()" }
+    bool_ty =  { "bool" }
+    u_ty    =  { /* "u8" | "u16" | "u32" | */ "u64" /* | "usize" */ }
+    i_ty    =  { /* "i8" | "i16" | "i32" | */ "i64" /* | "isize" */ }
+    f_ty    =  { /* "f32" | */ "f64" }
+    bool_lit=  { "true" | "false" }
 
 lit         = _{ float | int | bool }
     int     = @{ (add | sub)? ~ ASCII_DIGIT+ }
     float   = @{ int ~ "." ~ ASCII_DIGIT+ }
     bool    =  { "true" | "false" }
 
-ident       = @{ !keyword ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+ident       = @{ !keyword ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 
-binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le }
+binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le | or | and }
     add     =  { "+" }
     sub     =  { "-" }
     mul     =  { "*" }
@@ -18,6 +26,10 @@ binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le }
     ge      =  { ">=" }
     lt      =  { "<" }
     le      =  { "<=" }
+    or      =  { "||" }
+    and     =  { "&&" }
+
+type_decl   =  _{ ":" ~ ty }
 
 unary_op    = _{ plus | neg | not }
     plus    =  { "+" }
@@ -28,18 +40,23 @@ term        =  { /* convert | */ lit | "(" ~ expr ~ ")" | branch | call | access
     access  =  { ident }
     branch  =  { "if" ~ expr ~ scope ~ "else" ~ scope }
     // convert =  { term ~ "as" ~ ident }
-    call    =  { ident ~ "()" }
+    call    =  { ident ~ "(" ~ args ~ ")" }
+        args= _{ (arg ~ ("," ~ arg)*)? }
+        arg =  { expr }
 
 expr        =  { _term ~ (binary_op ~ _term)* }
     _term   = _{ unary | term }
     unary   =  { unary_op ~ expr }
 
-statement   = _{ expr | assign }
-    assign  =  { "let" ~ ident ~ "=" ~ expr }
+statement   =  { expr | assign }
+    assign  =  { "let" ~ ident ~ type_decl? ~"=" ~ expr }
 
 scope       =  { "{" ~ statement ~ (";" ~ statement)* ~ "}" }
 
-function    =  { "fn" ~ ident ~ "()" ~ scope }
+function    =  { "fn" ~ ident ~ "(" ~ params ~ ")" ~ fn_ty ~ scope }
+    params  = _{ (param ~ ("," ~ param)*)? }
+    param   =  { ident ~ type_decl? }
+    fn_ty   =  { ("->" ~ ty)? }
 
 module      =  { function* }
 

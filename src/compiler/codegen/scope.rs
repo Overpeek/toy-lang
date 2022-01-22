@@ -3,7 +3,7 @@ use crate::{ast, compiler::module::Module};
 
 //
 
-impl CodeGen for ast::Scope {
+impl<'i> CodeGen for ast::Scope<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         self.statements
             .iter()

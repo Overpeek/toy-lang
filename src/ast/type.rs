@@ -1,5 +1,10 @@
-use super::TypeOf;
-use std::fmt::Display;
+use super::{Ast, Generic, GenericSolver, Result, Rule, TypeOf, VisibleVars};
+use crate::ast::match_rule;
+use pest::{iterators::Pair, Span};
+use std::{
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Lit {
@@ -9,7 +14,15 @@ pub enum Lit {
     Unit(()),
 }
 
-impl TypeOf for Lit {
+impl<'i> TypeOf<'i> for Lit {
+    fn type_check_impl(
+        &mut self,
+        _: &mut VisibleVars,
+        solver: &mut GenericSolver<'i>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     fn type_of(&self) -> Type {
         match self {
             Lit::I64(_) => Type::I64,
@@ -19,7 +32,7 @@ impl TypeOf for Lit {
         }
     }
 
-    fn type_of_checked(&self) -> Option<Type> {
+    fn type_of_impl(&self) -> Option<Type> {
         Some(self.type_of())
     }
 }
@@ -32,32 +45,70 @@ pub enum Type {
     /// `i64`
     I64,
 
+    /// `u64`
+    U64,
+
     /// `bool`
     Bool,
 
     /// `()`
     Unit,
+
+    Unresolved,
+    /* /// `unresolved type`
+    Generic(u64), */
+}
+
+impl Generic for Type {
+    fn eval(self, solver: &mut GenericSolver) -> Result<Type> {
+        Ok(self)
+    }
+}
+
+impl<'i> Ast<'i> for Type {
+    fn span(&self) -> Span<'i> {
+        Span::new("unreachable", 0, 11).unwrap()
+    }
+
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
+        let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::ty)?;
+        let mut tokens = token.into_inner();
+
+        let token = tokens.next().unwrap();
+        Ok(match token.as_rule() {
+            Rule::unit_ty => Self::Unit,
+            Rule::bool_ty => Self::Bool,
+            Rule::u_ty => Self::U64,
+            Rule::i_ty => Self::I64,
+            Rule::f_ty => Self::F64,
+            // Rule::gen => Self::Unresolved,
+            _ => unreachable!(),
+        })
+    }
 }
 
 impl Display for Lit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Lit::F64(v) => v as &dyn Display,
-            Lit::I64(v) => v as _,
-            Lit::Bool(v) => v as _,
-            Lit::Unit(_) => &"()",
+            Self::F64(v) => v as &dyn Display,
+            Self::I64(v) => v as _,
+            Self::Bool(v) => v as _,
+            Self::Unit(_) => &"()",
         }
         .fmt(f)
     }
 }
 
 impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::F64 => write!(f, "f64"),
-            Type::I64 => write!(f, "i64"),
-            Type::Bool => write!(f, "bool"),
-            Type::Unit => write!(f, "()"),
+            Self::F64 => write!(f, "f64"),
+            Self::U64 => write!(f, "u64"),
+            Self::I64 => write!(f, "i64"),
+            Self::Bool => write!(f, "bool"),
+            Self::Unit => write!(f, "()"),
+            Self::Unresolved => write!(f, "<?>"),
         }
     }
 }

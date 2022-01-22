@@ -1,9 +1,9 @@
-use super::{Expr, ParseAst, Result, Rule, Type, VisibleVars};
+use super::{match_rule, Ast, Expr, Generic, GenericSolver, Result, Rule, Type, VisibleVars};
 use crate::ast::{Error, TypeOf};
-use pest::iterators::Pair;
-use std::fmt::Display;
+use pest::{iterators::Pair, Span};
+use std::{fmt::Display, hash::Hash};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     /// '+' <operand>
     Plus,
@@ -26,18 +26,22 @@ impl Display for UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UnaryExpr {
+pub struct UnaryExpr<'i> {
     pub operator: UnaryOp,
-    pub operand: Box<Expr>,
+    pub operand: Box<Expr<'i>>,
 
+    span: Span<'i>,
     ty: Option<Type>,
 }
 
-impl ParseAst for UnaryExpr {
-    fn parse(token: Pair<Rule>, vars: &mut VisibleVars) -> Result<Self> {
-        assert!(token.as_rule() == Rule::unary);
+impl<'i> Ast<'i> for UnaryExpr<'i> {
+    fn span(&self) -> Span<'i> {
+        self.span.clone()
+    }
 
+    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
         let span = token.as_span();
+        match_rule(&span, token.as_rule(), Rule::unary)?;
 
         let mut tokens = token.into_inner();
         let operator = tokens.next().unwrap();
@@ -48,34 +52,77 @@ impl ParseAst for UnaryExpr {
         };
 
         let operand = tokens.next().unwrap();
-        let operand = Box::<Expr>::new(ParseAst::parse(operand, vars)?);
-
-        let ty = match (operator, operand.type_of_checked()) {
-            (UnaryOp::Plus, Some(Type::F64)) => Some(Type::F64),
-            (UnaryOp::Plus, Some(Type::I64)) => Some(Type::I64),
-            (UnaryOp::Neg, Some(Type::F64)) => Some(Type::F64),
-            (UnaryOp::Neg, Some(Type::I64)) => Some(Type::I64),
-            (op, Some(rhs)) => return Err(Error::new_invalid_unary_op(span, op, rhs)),
-            (_, None) => None,
-        };
+        let operand = Box::<Expr>::new(Ast::parse(operand)?);
 
         Ok(Self {
             operator,
             operand,
 
-            ty,
+            span,
+            ty: None,
         })
     }
 }
 
-impl TypeOf for UnaryExpr {
-    fn type_of_checked(&self) -> Option<Type> {
+impl<'i> TypeOf<'i> for UnaryExpr<'i> {
+    fn type_check_impl(
+        &mut self,
+        vars: &mut VisibleVars,
+        solver: &mut GenericSolver<'i>,
+    ) -> Result<()> {
+        self.operand.type_check(vars, solver)?;
+
+        let ty = UnaryExprType::new(self.operator, self.operand.type_of()).eval(solver)?;
+        self.ty = Some(ty);
+
+        Ok(())
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
         self.ty
     }
 }
 
-impl Display for UnaryExpr {
+impl<'i> Display for UnaryExpr<'i> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({} {})", self.operator, self.operand)
+    }
+}
+
+//
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UnaryExprType {
+    pub operator: UnaryOp,
+    pub operand: Box<Type>,
+}
+
+impl UnaryExprType {
+    pub fn new(operator: UnaryOp, operand: Type) -> Self {
+        Self {
+            operator,
+            operand: Box::new(operand),
+        }
+    }
+}
+
+impl Generic for UnaryExprType {
+    fn eval(self, solver: &mut GenericSolver) -> Result<Type> {
+        match (self.operator, *self.operand) {
+            (UnaryOp::Plus, Type::F64) => Ok(Type::F64),
+            (UnaryOp::Plus, Type::I64) => Ok(Type::I64),
+            (UnaryOp::Neg, Type::F64) => Ok(Type::F64),
+            (UnaryOp::Neg, Type::I64) => Ok(Type::I64),
+
+            (UnaryOp::Not, Type::Bool) => Ok(Type::Bool),
+
+            (operator, Type::Unresolved) => Ok(Type::Unresolved),
+
+            (op, rhs) => Err(Error::new_invalid_unary_op(
+                Span::new("unreachable", 0, 0).unwrap(),
+                op,
+                rhs,
+            )),
+        }
     }
 }

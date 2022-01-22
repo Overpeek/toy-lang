@@ -6,7 +6,7 @@ use crate::{
 
 //
 
-impl CodeGen for ast::Access {
+impl<'i> CodeGen for ast::Access<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         let function = module.function.borrow();
         let function = function.as_ref().expect("Access outside of any function?");

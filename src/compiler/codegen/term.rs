@@ -3,13 +3,13 @@ use crate::{ast, compiler::module::Module};
 
 //
 
-impl CodeGen for ast::Term {
+impl<'i> CodeGen for ast::Term<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         self.internal.code_gen(module)
     }
 }
 
-impl CodeGen for ast::TermInternal {
+impl<'i> CodeGen for ast::TermInternal<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         match self {
             ast::TermInternal::Lit(lit) => lit.code_gen(module),

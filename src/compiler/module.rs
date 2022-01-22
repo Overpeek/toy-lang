@@ -4,7 +4,7 @@ use super::{
     instance::Compiler,
     optimizer::OptLevel,
 };
-use crate::ast;
+use crate::ast::{self, generic_mangle};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -14,7 +14,12 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue},
     OptimizationLevel,
 };
-use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    path::Path,
+    rc::Rc,
+};
 
 //
 
@@ -36,6 +41,7 @@ pub struct Module<'ctx> {
     engine: ExecutionEngine<'ctx>,
     main: Option<JitFunction<unsafe extern "C" fn() -> i64>>,
 
+    pub(super) generic_functions: HashSet<String>,
     pub(super) functions: HashMap<String, FunctionValue<'ctx>>,
     pub(super) function: Rc<RefCell<Option<ScopeVars<'ctx>>>>, // current function and values
 }
@@ -70,7 +76,7 @@ impl<'ctx> Module<'ctx> {
 
         let fpmb = PassManagerBuilder::create();
         fpmb.set_optimization_level(opt.into());
-        fpmb.set_inliner_with_threshold(100);
+        fpmb.set_inliner_with_threshold(1024);
 
         let lpm = PassManager::create(&());
         let mpm = PassManager::create(&());
@@ -98,6 +104,7 @@ impl<'ctx> Module<'ctx> {
             engine,
             main: None,
 
+            generic_functions: HashSet::new(),
             functions: HashMap::new(),
             function: Rc::new(RefCell::new(None)),
         };
@@ -109,7 +116,7 @@ impl<'ctx> Module<'ctx> {
         module.main = unsafe {
             module
                 .engine
-                .get_function::<unsafe extern "C" fn() -> i64>("main")
+                .get_function::<unsafe extern "C" fn() -> i64>(&generic_mangle(&[], "main"))
         }
         .ok();
 

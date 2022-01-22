@@ -6,7 +6,7 @@ use crate::{
 
 //
 
-impl CodeGen for ast::UnaryExpr {
+impl<'i> CodeGen for ast::UnaryExpr<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
         let operand = self.operand.code_gen(module)?.unwrap();
 
