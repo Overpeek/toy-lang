@@ -1,7 +1,9 @@
-use super::{Ast, Expr, GenericSolver, Result, Rule, Scope, VisibleVars};
+use super::{Ast, Expr, Result, Rule, Scope, VisibleVars};
 use crate::ast::{match_rule, Error, Type, TypeOf};
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BranchInternal<'i> {
@@ -17,6 +19,8 @@ pub struct Branch<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Branch<'i> {
     fn span(&self) -> Span<'i> {
@@ -46,14 +50,10 @@ impl<'i> Ast<'i> for Branch<'i> {
 }
 
 impl<'i> TypeOf<'i> for Branch<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        self.internal.test.type_check(vars, solver)?;
-        self.internal.on_true.type_check(vars, solver)?;
-        self.internal.on_false.type_check(vars, solver)?;
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
+        self.internal.test.type_check(vars)?;
+        self.internal.on_true.type_check(vars)?;
+        self.internal.on_false.type_check(vars)?;
 
         let ty_test = self.internal.test.type_of();
         let ty_true = self.internal.on_true.type_of();
@@ -68,6 +68,8 @@ impl<'i> TypeOf<'i> for Branch<'i> {
                     &ty,
                 ))
             }
+            (_, Type::Unresolved, ty_false, false) => Some(ty_false),
+            (_, ty_true, Type::Unresolved, false) => Some(ty_true),
             (_, ty_true, ty_false, false) => {
                 return Err(Error::new_type_mismatch(
                     self.internal.on_false.span(),

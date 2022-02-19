@@ -8,23 +8,19 @@ use crate::{
 
 impl<'i> CodeGen for ast::Call<'i> {
     fn code_gen<'ctx>(&self, module: &mut Module<'ctx>) -> CodeGenResult<'ctx> {
-        let func = match module.functions.get(self.name.value.as_str()) {
-            Some(&val) => val,
-            None => {
-                let as_generic = generic_mangle(
-                    &self
-                        .args
-                        .iter()
-                        .map(|arg| arg.type_of())
-                        .collect::<Box<_>>(),
-                    self.name.value.as_str(),
-                );
+        let name = self.name.value.as_str();
+        let sig = self
+            .args
+            .iter()
+            .map(|arg| arg.type_of())
+            .collect::<Box<_>>();
+        let as_generic = generic_mangle(&sig, name);
 
-                match module.functions.get(&as_generic) {
-                    Some(&val) => val,
-                    None => return Err(CompileError::FuncNotFound),
-                }
-            }
+        log::debug!("Compiling call: {name} ({sig:?} {as_generic})",);
+
+        let func = match module.functions.get(&as_generic) {
+            Some(&val) => val,
+            None => return Err(CompileError::FuncNotFound),
         };
 
         let args: Vec<_> = self

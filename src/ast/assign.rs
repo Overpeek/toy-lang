@@ -1,6 +1,8 @@
-use super::{match_rule, Ast, Expr, GenericSolver, Ident, Result, Rule, Type, TypeOf, VisibleVars};
+use super::{match_rule, Ast, Expr, Ident, Result, Rule, Type, TypeOf, VisibleVars};
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assign<'i> {
@@ -10,6 +12,8 @@ pub struct Assign<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Assign<'i> {
     fn span(&self) -> Span<'i> {
@@ -35,12 +39,8 @@ impl<'i> Ast<'i> for Assign<'i> {
 }
 
 impl<'i> TypeOf<'i> for Assign<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        self.expr.type_check(vars, solver)?;
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
+        self.expr.type_check(vars)?;
         let ty = self.expr.type_of();
         self.ty = Some(ty);
         vars.push_var(self.name.value.as_str(), ty);

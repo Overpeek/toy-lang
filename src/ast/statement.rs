@@ -1,8 +1,8 @@
-use super::{
-    match_rule, Assign, Ast, Expr, GenericSolver, Result, Rule, Type, TypeOf, VisibleVars,
-};
+use super::{match_rule, Assign, Ast, Expr, Result, Rule, Type, TypeOf, VisibleVars};
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementInternal<'i> {
@@ -17,6 +17,8 @@ pub struct Statement<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Statement<'i> {
     fn span(&self) -> Span<'i> {
@@ -45,17 +47,13 @@ impl<'i> Ast<'i> for Statement<'i> {
 }
 
 impl<'i> TypeOf<'i> for Statement<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         let internal = match self.internal.as_mut() {
             StatementInternal::Expr(expr) => expr as &mut dyn TypeOf,
             StatementInternal::Assign(assign) => assign as _,
         };
 
-        internal.type_check(vars, solver)?;
+        internal.type_check(vars)?;
         self.ty = Some(internal.type_of());
 
         Ok(())

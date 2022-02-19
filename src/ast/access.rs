@@ -1,8 +1,9 @@
+use super::{Ast, Error, Ident, Result, Rule, Type, TypeOf, VisibleVars};
 use crate::ast::match_rule;
-
-use super::{Ast, Error, GenericSolver, Ident, Result, Rule, Type, TypeOf, VisibleVars};
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Access<'i> {
@@ -11,6 +12,8 @@ pub struct Access<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Access<'i> {
     fn span(&self) -> Span<'i> {
@@ -31,7 +34,7 @@ impl<'i> Ast<'i> for Access<'i> {
 }
 
 impl<'i> TypeOf<'i> for Access<'i> {
-    fn type_check_impl(&mut self, vars: &mut VisibleVars, _: &mut GenericSolver<'i>) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         let name = self.name.value.as_str();
         self.ty = match vars.get_var(name) {
             Some(ty) => Some(ty),

@@ -1,6 +1,6 @@
-use super::{Ast, FnSig, GenericSolver, Ident, Result, Rule, Scope, Type, VisibleVars};
-use crate::ast::{Error, TypeOf};
-use pest::{iterators::Pair, Span};
+use super::{FunctionGen, Ident, ParamGen, Scope, Statement, Type, VisibleVars};
+use crate::ast::{generic_mangle, Error, Result, TypeOf};
+use pest::Span;
 use std::fmt::Display;
 
 //
@@ -11,122 +11,16 @@ pub struct FunctionInternal<'i> {
     pub params: Vec<Param<'i>>,
     pub fn_ty: FnTy<'i>,
     pub scope: Scope<'i>,
-
-    generic: bool,
-    generated: Vec<FnSig>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function<'i> {
     pub internal: Box<FunctionInternal<'i>>,
+    pub type_checking: bool,
 
     span: Span<'i>,
-    ty: Option<Type>,
+    ty: Type,
 }
-
-impl<'i> Ast<'i> for Function<'i> {
-    fn span(&self) -> Span<'i> {
-        self.span.clone()
-    }
-
-    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
-        assert_eq!(token.as_rule(), Rule::function);
-
-        let span = token.as_span();
-        let mut tokens = token.into_inner();
-
-        let internal = Box::new(FunctionInternal {
-            name: Ast::parse(tokens.next().unwrap())?,
-            params: if let Some(Rule::param) = tokens.peek().map(|token| token.as_rule()) {
-                Ast::parse(tokens.next().unwrap())?
-            } else {
-                vec![]
-            },
-            fn_ty: Ast::parse(tokens.next().unwrap())?,
-            scope: Ast::parse(tokens.next().unwrap())?,
-
-            generic: false,
-            generated: vec![],
-        });
-
-        Ok(Self {
-            internal,
-
-            span,
-            ty: None,
-        })
-    }
-}
-
-impl<'i> TypeOf<'i> for Function<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        self.internal.generic = /* matches!(self.internal.fn_ty.ty, Type::Unresolved)
-            || */ self
-                .internal
-                .params
-                .iter()
-                .any(|param| matches!(param.ty, Type::Unresolved));
-        self.ty = Some(self.internal.fn_ty.ty);
-
-        solver.insert(self.internal.name.value.as_str(), self.clone());
-
-        let ty = if self.internal.generic {
-            // generic functions are ignored until generated
-            self.internal.fn_ty.ty
-        } else {
-            // other functions are generated immediately
-            vars.push();
-            self.internal.params.iter().for_each(|param| {
-                vars.push_var(param.ident.value.as_str(), param.ty);
-            });
-            self.internal.scope.type_check(vars, solver)?;
-            vars.pop();
-
-            self.internal.scope.type_of()
-        };
-
-        let fn_ty = self.internal.fn_ty.ty;
-        if ty != fn_ty {
-            return Err(Error::new_type_mismatch(self.span(), &fn_ty, &ty));
-        }
-
-        Ok(())
-    }
-
-    fn type_of_impl(&self) -> Option<Type> {
-        self.ty
-    }
-}
-
-impl<'i> Display for Function<'i> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "fn {}() {}", self.internal.name, self.internal.scope)
-    }
-}
-
-impl<'i> Function<'i> {
-    pub fn partial_type_check(&mut self, solver: &mut GenericSolver<'i>) {
-        self.ty = Some(self.internal.fn_ty.ty);
-
-        self.internal.generic = self
-            .internal
-            .params
-            .iter()
-            .any(|param| matches!(param.ty, Type::Unresolved));
-
-        solver.insert(self.internal.name.value.as_str(), self.clone());
-    }
-
-    pub fn generic(&self) -> bool {
-        self.internal.generic
-    }
-}
-
-//
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param<'i> {
@@ -135,64 +29,169 @@ pub struct Param<'i> {
     pub ty: Type,
 }
 
-impl<'i> Ast<'i> for Vec<Param<'i>> {
-    fn span(&self) -> Span<'i> {
-        Span::new("unreachable", 0, 11).unwrap()
-    }
-
-    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
-        // let span = token.as_span();
-        // match_rule(&span, token.as_rule(), Rule::params)?;
-        let mut tokens = token.into_inner();
-
-        let mut params = vec![];
-        while tokens.peek().is_some() {
-            let ident = Ident::parse(tokens.next().unwrap())?;
-            if let Some(Rule::ty) = tokens.peek().map(|token| token.as_rule()) {
-                let ty = Type::parse(tokens.next().unwrap())?;
-                let span = ty.span();
-                params.push(Param { ident, span, ty })
-            } else {
-                let span = ident.span();
-                params.push(Param {
-                    ident,
-                    span,
-                    ty: Type::Unresolved,
-                })
-            }
-        }
-
-        Ok(params)
-    }
-}
-
-//
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnTy<'i> {
     span: Span<'i>,
     ty: Type,
 }
 
-impl<'i> Ast<'i> for FnTy<'i> {
-    fn span(&self) -> Span<'i> {
-        self.span.clone()
+//
+
+impl<'i> Function<'i> {
+    pub fn new_non_generic(gen: FunctionGen<'i>) -> std::result::Result<Self, FunctionGen> {
+        if gen.internal.fn_ty.ty == Type::Unresolved {
+            return Err(gen);
+        }
+
+        let sig: Box<[Type]> = gen.internal.params.iter().map(|param| param.ty).collect();
+
+        if sig.iter().any(|ty| matches!(ty, Type::Unresolved)) {
+            return Err(gen);
+        }
+
+        let params = gen
+            .internal
+            .params
+            .into_iter()
+            .map(|param| {
+                let ParamGen { ident, span, ty } = param;
+                Param { ident, span, ty }
+            })
+            .collect();
+
+        let span = Span::new("", 0, 0).unwrap();
+        let ty = gen.internal.fn_ty.ty;
+        Ok(Self {
+            internal: Box::new(FunctionInternal {
+                name: gen.internal.name,
+                params,
+                fn_ty: FnTy {
+                    span: gen.internal.fn_ty.span,
+                    ty: gen.internal.fn_ty.ty,
+                },
+                scope: gen.internal.scope,
+            }),
+            type_checking: false,
+            span,
+            ty,
+        })
     }
 
-    fn parse(token: Pair<'i, Rule>) -> Result<Self> {
-        assert_eq!(token.as_rule(), Rule::fn_ty);
+    pub fn new(
+        vars: &mut VisibleVars<'i>,
+        call_site: Span,
+        name: &str,
+        sig: &[Type],
+    ) -> Result<Self> {
+        let gen = vars.get_gen_fn(call_site.clone(), name)?;
 
-        let span = token.as_span();
-        let mut tokens = token.into_inner();
-        Ok(match tokens.peek() {
-            Some(_) => Self {
-                span,
-                ty: Ast::parse(tokens.next().unwrap())?,
-            },
-            None => Self {
-                span,
-                ty: Type::Unit,
-            },
+        // unresolved arg types not allowed
+        assert!(sig.iter().all(|ty| !matches!(ty, Type::Unresolved)));
+        // arg count must match sig
+        let expect = gen.internal.params.len();
+        let got = sig.len();
+        if expect != got {
+            return Err(Error::new_argc_mismatch(call_site, expect, got));
+        }
+
+        let params: Vec<Param> = gen
+            .internal
+            .params
+            .iter()
+            .zip(sig.iter())
+            .map(|(param, &ty)| Param {
+                ident: param.ident.clone(),
+                span: param.span.clone(),
+                ty,
+            })
+            .collect();
+
+        let mut scope = gen.internal.scope.clone();
+
+        let name = gen.internal.name.value.clone();
+
+        // type checking
+
+        vars.push();
+        params.iter().for_each(|param| {
+            vars.push_var(param.ident.value.as_str(), param.ty);
+        });
+        scope.type_check(vars)?;
+        vars.pop();
+
+        let ty = scope.type_of();
+
+        let span = Span::new("", 0, 0).unwrap();
+        Ok(Self {
+            internal: Box::new(FunctionInternal {
+                name: Ident::from(generic_mangle(sig, &name), span.clone()),
+                params,
+                fn_ty: FnTy {
+                    span: span.clone(),
+                    ty,
+                },
+                scope,
+            }),
+            type_checking: false,
+            span,
+            ty,
         })
+    }
+
+    pub fn global(
+        vars: &mut VisibleVars<'i>,
+        statements: Vec<Statement<'i>>,
+        span: Span<'i>,
+    ) -> Result<Self> {
+        let mut scope = Scope::global(statements, span.clone());
+        scope.type_check(vars)?;
+        let ty = scope.type_of();
+        Ok(Self {
+            internal: Box::new(FunctionInternal {
+                name: Ident::new("__global"),
+                params: vec![],
+                fn_ty: FnTy {
+                    span: Span::new("__global", 0, 5).unwrap(),
+                    ty,
+                },
+                scope,
+            }),
+            type_checking: false,
+            span,
+            ty,
+        })
+    }
+}
+
+impl<'i> TypeOf<'i> for Function<'i> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
+        vars.push();
+        self.internal.params.iter().for_each(|param| {
+            vars.push_var(param.ident.value.as_str(), param.ty);
+        });
+        self.internal.scope.type_check(vars)?;
+        vars.pop();
+
+        let expect = self.ty;
+        let got = self.internal.scope.type_of();
+        if expect != got {
+            Err(Error::new_type_mismatch(self.span.clone(), &expect, &got))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn type_of(&self) -> Type {
+        self.ty
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
+        Some(self.type_of())
+    }
+}
+
+impl<'i> Display for Function<'i> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fn {}() {}", self.internal.name, self.internal.scope)
     }
 }

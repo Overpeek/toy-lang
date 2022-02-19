@@ -15,10 +15,6 @@ impl<'i> CodeGen for ast::Module<'i> {
         // first compile all function prototypes
 
         for function in self.functions.values() {
-            if function.generic() {
-                continue;
-            }
-
             let name = function.internal.name.value.clone();
             let ty = function.type_of();
 
@@ -44,7 +40,7 @@ impl<'i> CodeGen for ast::Module<'i> {
                 Type::Unresolved => unreachable!(),
             };
 
-            log::debug!("compiling proto: '{}'", name);
+            log::debug!("compiling proto: '{}' -> {:?}", name, ty);
             let proto = module.module.add_function(&name, fn_ty, None);
             for (param, param_name) in proto.get_param_iter().zip(function.internal.params.iter()) {
                 match param {

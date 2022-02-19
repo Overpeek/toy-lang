@@ -70,7 +70,7 @@ impl Debug for ExecuteError {
 
 impl Display for ExecuteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No main function")
+        write!(f, "Exec return type mismatch")
     }
 }
 

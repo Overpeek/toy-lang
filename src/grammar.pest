@@ -1,19 +1,19 @@
 keyword     =  { "as" | "let" | "fn" | "if" | "else" | ty | bool_lit }
-    ty      =  { unit_ty | bool_ty | u_ty | i_ty | f_ty /* | gen */ }
-    // gen     =  { "?" }
+    ty      =  { unit_ty | bool_ty | u_ty | i_ty | f_ty | gen_ty }
     unit_ty =  { "()" }
     bool_ty =  { "bool" }
     u_ty    =  { /* "u8" | "u16" | "u32" | */ "u64" /* | "usize" */ }
     i_ty    =  { /* "i8" | "i16" | "i32" | */ "i64" /* | "isize" */ }
     f_ty    =  { /* "f32" | */ "f64" }
     bool_lit=  { "true" | "false" }
+    gen_ty  =  { "?" }
 
 lit         = _{ float | int | bool }
     int     = @{ (add | sub)? ~ ASCII_DIGIT+ }
     float   = @{ int ~ "." ~ ASCII_DIGIT+ }
     bool    =  { "true" | "false" }
 
-ident       = @{ !keyword ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+ident       = @{ !keyword ~ !"_" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 
 binary_op   = _{ add | sub | mul | div | eq | ne | gt | ge | lt | le | or | and }
     add     =  { "+" }
@@ -48,17 +48,17 @@ expr        =  { _term ~ (binary_op ~ _term)* }
     _term   = _{ unary | term }
     unary   =  { unary_op ~ expr }
 
-statement   =  { expr | assign }
+statement   =  { assign | expr }
     assign  =  { "let" ~ ident ~ type_decl? ~"=" ~ expr }
 
-scope       =  { "{" ~ statement ~ (";" ~ statement)* ~ "}" }
+scope       =  { "{" ~ statement ~ (";" ~ statement)* ~ ";"? ~ "}" }
 
 function    =  { "fn" ~ ident ~ "(" ~ params ~ ")" ~ fn_ty ~ scope }
     params  = _{ (param ~ ("," ~ param)*)? }
     param   =  { ident ~ type_decl? }
     fn_ty   =  { ("->" ~ ty)? }
 
-module      =  { function* }
+module      =  { (function | statement ~ ";")* ~ statement?}
 
 input       = _{ SOI ~ module ~ EOI }
 

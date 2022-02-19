@@ -4,7 +4,7 @@ use super::{
     instance::Compiler,
     optimizer::OptLevel,
 };
-use crate::ast::{self, generic_mangle};
+use crate::ast::{self, generic_mangle, Type, TypeOf};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -34,7 +34,9 @@ pub struct Module<'ctx> {
     fpm: PassManager<FunctionValue<'ctx>>,
 
     engine: ExecutionEngine<'ctx>,
-    main: Option<JitFunction<unsafe extern "C" fn() -> i64>>,
+    // main: Option<JitFunction<unsafe extern "C" fn()>>,
+    ty: Type,
+    pub label_id: u32,
 
     pub(super) functions: HashMap<String, FunctionValue<'ctx>>,
     pub(super) function: Rc<RefCell<Option<ScopeVars<'ctx>>>>, // current function and values
@@ -85,6 +87,12 @@ impl<'ctx> Module<'ctx> {
             .create_jit_execution_engine(OptimizationLevel::None)
             .unwrap();
 
+        let ty = ast_module
+            .functions
+            .get(&generic_mangle(&[], "__global"))
+            .unwrap()
+            .type_of();
+
         let mut module = Self {
             context,
             module,
@@ -96,7 +104,9 @@ impl<'ctx> Module<'ctx> {
             fpm,
 
             engine,
-            main: None,
+            // main: None,
+            ty,
+            label_id: 0,
 
             functions: HashMap::new(),
             function: Rc::new(RefCell::new(None)),
@@ -105,26 +115,64 @@ impl<'ctx> Module<'ctx> {
         ast_module.code_gen(&mut module)?;
         module.finalize();
 
-        // load the main function
+        /* // load the global function
         module.main = unsafe {
             module
                 .engine
-                .get_function::<unsafe extern "C" fn() -> i64>(&generic_mangle(&[], "main"))
+                .get_function::<unsafe extern "C" fn()>(&generic_mangle(&[], "__global"))
         }
-        .ok();
+        .ok(); */
 
         Ok(module)
     }
 
-    pub fn exec(&self) -> ExecuteResult<i64> {
-        let main = self.main.as_ref().ok_or(ExecuteError)?;
-        let result = unsafe { main.call() };
-        Ok(result)
+    pub fn get_function_0<T>(&self, name: &str) -> JitFunction<unsafe extern "C" fn() -> T> {
+        unsafe {
+            self.engine
+                .get_function::<unsafe extern "C" fn() -> T>(&generic_mangle(&[], name))
+        }
+        .unwrap()
+    }
+
+    pub fn get_function_1<P1, T>(&self, name: &str) -> JitFunction<unsafe extern "C" fn(P1) -> T> {
+        unsafe {
+            self.engine
+                .get_function::<unsafe extern "C" fn(P1) -> T>(&generic_mangle(&[], name))
+        }
+        .unwrap()
+    }
+
+    pub fn get_function_2<P1, P2, T>(
+        &self,
+        name: &str,
+    ) -> JitFunction<unsafe extern "C" fn(P1, P2) -> T> {
+        unsafe {
+            self.engine
+                .get_function::<unsafe extern "C" fn(P1, P2) -> T>(&generic_mangle(&[], name))
+        }
+        .unwrap()
+    }
+
+    pub fn exec<T: 'static>(&self) -> ExecuteResult<T> {
+        if !self.ty.matches::<T>() {
+            return Err(ExecuteError);
+        }
+
+        Ok(unsafe {
+            self.engine
+                .get_function::<unsafe extern "C" fn() -> T>(&generic_mangle(&[], "__global"))
+                .unwrap()
+                .call()
+        })
     }
 
     fn finalize(&self) {
         for f in self.functions.values() {
-            assert!(f.verify(true));
+            assert!(
+                f.verify(true),
+                "{}",
+                self.module.print_to_string().to_string()
+            );
         }
 
         log::debug!(

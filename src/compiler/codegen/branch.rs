@@ -29,18 +29,21 @@ impl<'i> CodeGen for ast::Branch<'i> {
         let function = function.borrow();
         let function = function.as_ref().expect("Branch outside of any function?");
 
+        let id = module.label_id;
+        module.label_id += 1;
+
         // one block to enter if the condition is true
         let a = module
             .context
-            .append_basic_block(function.proto, "Branch on_true");
+            .append_basic_block(function.proto, &format!("Branch on_true {id}"));
         // one block to enter if the condition is false
         let b = module
             .context
-            .append_basic_block(function.proto, "Branch on_false");
+            .append_basic_block(function.proto, &format!("Branch on_false {id}"));
         // and one last block to enter after exiting from either one of the last blocks
         let r#continue = module
             .context
-            .append_basic_block(function.proto, "Branch continue");
+            .append_basic_block(function.proto, &format!("Branch continue {id}"));
 
         module.builder.build_conditional_branch(cond, a, b);
 
@@ -69,7 +72,7 @@ impl<'i> CodeGen for ast::Branch<'i> {
                     ast::Type::Unit | ast::Type::Unresolved => unreachable!(),
                 };
 
-                let phi = module.builder.build_phi(ty, "Branch phi");
+                let phi = module.builder.build_phi(ty, &format!("Branch phi {id}"));
                 phi.add_incoming(&[(&result_a, a), (&result_b, b)]);
                 Ok(Some(phi.as_basic_value()))
             }

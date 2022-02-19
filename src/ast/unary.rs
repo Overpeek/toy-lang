@@ -1,7 +1,9 @@
-use super::{match_rule, Ast, Expr, Generic, GenericSolver, Result, Rule, Type, VisibleVars};
+use super::{match_rule, Ast, Expr, Result, Rule, Type, VisibleVars};
 use crate::ast::{Error, TypeOf};
 use pest::{iterators::Pair, Span};
 use std::{fmt::Display, hash::Hash};
+
+//
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
@@ -15,6 +17,17 @@ pub enum UnaryOp {
     Not,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryExpr<'i> {
+    pub operator: UnaryOp,
+    pub operand: Box<Expr<'i>>,
+
+    span: Span<'i>,
+    ty: Option<Type>,
+}
+
+//
+
 impl Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -23,15 +36,6 @@ impl Display for UnaryOp {
             UnaryOp::Not => write!(f, "!"),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnaryExpr<'i> {
-    pub operator: UnaryOp,
-    pub operand: Box<Expr<'i>>,
-
-    span: Span<'i>,
-    ty: Option<Type>,
 }
 
 impl<'i> Ast<'i> for UnaryExpr<'i> {
@@ -65,50 +69,13 @@ impl<'i> Ast<'i> for UnaryExpr<'i> {
 }
 
 impl<'i> TypeOf<'i> for UnaryExpr<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        self.operand.type_check(vars, solver)?;
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
+        self.operand.type_check(vars)?;
 
-        let ty = UnaryExprType::new(self.operator, self.operand.type_of()).eval(solver)?;
-        self.ty = Some(ty);
+        let operator = self.operator;
+        let operand = self.operand.type_of();
 
-        Ok(())
-    }
-
-    fn type_of_impl(&self) -> Option<Type> {
-        self.ty
-    }
-}
-
-impl<'i> Display for UnaryExpr<'i> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({} {})", self.operator, self.operand)
-    }
-}
-
-//
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UnaryExprType {
-    pub operator: UnaryOp,
-    pub operand: Box<Type>,
-}
-
-impl UnaryExprType {
-    pub fn new(operator: UnaryOp, operand: Type) -> Self {
-        Self {
-            operator,
-            operand: Box::new(operand),
-        }
-    }
-}
-
-impl Generic for UnaryExprType {
-    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
-        match (self.operator, *self.operand) {
+        let ty = match (operator, operand) {
             (UnaryOp::Plus, Type::F64) => Ok(Type::F64),
             (UnaryOp::Plus, Type::I64) => Ok(Type::I64),
             (UnaryOp::Neg, Type::F64) => Ok(Type::F64),
@@ -123,6 +90,20 @@ impl Generic for UnaryExprType {
                 op,
                 rhs,
             )),
-        }
+        }?;
+        log::debug!("{operator} {operand} = {ty}");
+        self.ty = Some(ty);
+
+        Ok(())
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
+        self.ty
+    }
+}
+
+impl<'i> Display for UnaryExpr<'i> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({} {})", self.operator, self.operand)
     }
 }

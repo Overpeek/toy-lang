@@ -1,10 +1,9 @@
-use inkwell::values::BasicValueEnum;
-
 use super::{CodeGen, CodeGenResult};
 use crate::{
-    ast,
+    ast::{self, TypeOf},
     compiler::module::{Module, ScopeVars},
 };
+use inkwell::values::BasicValueEnum;
 use std::collections::HashMap;
 
 //
@@ -16,7 +15,11 @@ impl<'i> CodeGen for ast::Function<'i> {
             None => return Ok(None),
         };
 
-        log::debug!("compiling fn: '{}'", self.internal.name);
+        log::debug!(
+            "compiling fn: '{}' -> {}",
+            self.internal.name,
+            self.type_of()
+        );
 
         // block
         let entry = module.context.append_basic_block(proto, "entry");

@@ -1,7 +1,9 @@
-use super::{Ast, GenericSolver, Result, Rule, Statement, Type, TypeOf, VisibleVars};
+use super::{Ast, Result, Rule, Statement, Type, TypeOf, VisibleVars};
 use crate::ast::match_rule;
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope<'i> {
@@ -11,6 +13,8 @@ pub struct Scope<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Scope<'i> {
     fn span(&self) -> Span<'i> {
@@ -46,15 +50,11 @@ impl<'i> Ast<'i> for Scope<'i> {
 }
 
 impl<'i> TypeOf<'i> for Scope<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         vars.push();
         self.statements
             .iter_mut()
-            .try_for_each(|stmt| stmt.type_check(vars, solver))?;
+            .try_for_each(|stmt| stmt.type_check(vars))?;
         vars.pop();
 
         let ty = self
@@ -79,5 +79,15 @@ impl<'i> Display for Scope<'i> {
             statement.fmt(f)?;
         }
         write!(f, "}}")
+    }
+}
+
+impl<'i> Scope<'i> {
+    pub fn global(statements: Vec<Statement<'i>>, span: Span<'i>) -> Self {
+        Self {
+            span,
+            statements,
+            ty: None,
+        }
     }
 }

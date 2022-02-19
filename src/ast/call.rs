@@ -1,4 +1,4 @@
-use super::{Ast, Expr, GenericSolver, Ident, Result, Rule, Type, TypeOf, VisibleVars};
+use super::{Ast, Expr, Function, Ident, Result, Rule, Type, TypeOf, VisibleVars};
 use crate::ast::match_rule;
 use pest::{iterators::Pair, Span};
 use std::fmt::Display;
@@ -8,11 +8,13 @@ use std::fmt::Display;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call<'i> {
     pub name: Ident<'i>,
-    pub args: Vec<Arg<'i>>,
+    pub args: Vec<Expr<'i>>,
 
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Call<'i> {
     fn span(&self) -> Span<'i> {
@@ -40,19 +42,23 @@ impl<'i> Ast<'i> for Call<'i> {
 }
 
 impl<'i> TypeOf<'i> for Call<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         for arg in self.args.iter_mut() {
-            arg.type_check(vars, solver)?;
+            arg.type_check(vars)?;
         }
 
         let fn_name = self.name.value.as_str();
-
         let sig: Box<[Type]> = self.args.iter().map(|arg| arg.type_of()).collect();
-        let ty = solver.get(vars, self.span(), fn_name, &sig)?;
+
+        let ty = if let Ok(ty) = vars.get_fn_ty(self.span(), fn_name, &sig) {
+            ty
+        } else {
+            let f = Function::new(vars, self.span(), fn_name, &sig)?;
+            let ty = f.type_of();
+            vars.push_fn(fn_name, &sig, f);
+            ty
+        };
+
         self.ty = Some(ty);
 
         Ok(())
@@ -68,7 +74,3 @@ impl<'i> Display for Call<'i> {
         write!(f, "{}()", self.name)
     }
 }
-
-//
-
-pub type Arg<'i> = Expr<'i>;

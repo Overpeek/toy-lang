@@ -1,7 +1,9 @@
-use super::{Expr, Generic, GenericSolver, Result, Rule, Type, TypeOf, VisibleVars};
+use super::{Expr, Result, Rule, Type, TypeOf, VisibleVars};
 use crate::ast::Error;
 use pest::{iterators::Pair, Span};
 use std::{fmt::Display, hash::Hash};
+
+//
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
@@ -54,6 +56,23 @@ pub enum BinaryOp {
     And,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Sides<T> {
+    pub lhs: T,
+    pub rhs: T,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryExpr<'i> {
+    pub operator: BinaryOp,
+    pub operands: Box<Sides<Expr<'i>>>,
+
+    span: Span<'i>,
+    ty: Option<Type>,
+}
+
+//
+
 impl Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -73,21 +92,6 @@ impl Display for BinaryOp {
             BinaryOp::And => write!(f, "&&"),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Sides<T> {
-    pub lhs: T,
-    pub rhs: T,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BinaryExpr<'i> {
-    pub operator: BinaryOp,
-    pub operands: Box<Sides<Expr<'i>>>,
-
-    span: Span<'i>,
-    ty: Option<Type>,
 }
 
 impl<'i> BinaryExpr<'i> {
@@ -123,58 +127,15 @@ impl<'i> BinaryExpr<'i> {
 }
 
 impl<'i> TypeOf<'i> for BinaryExpr<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
-        self.operands.lhs.type_check(vars, solver)?;
-        self.operands.rhs.type_check(vars, solver)?;
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
+        self.operands.lhs.type_check(vars)?;
+        self.operands.rhs.type_check(vars)?;
 
-        let lhs = self.operands.rhs.type_of();
+        let op = self.operator;
+        let lhs = self.operands.lhs.type_of();
         let rhs = self.operands.rhs.type_of();
 
-        let ty = BinaryExprType::new(lhs, self.operator, rhs).eval(solver)?;
-        self.ty = Some(ty);
-
-        Ok(())
-    }
-
-    fn type_of_impl(&self) -> Option<Type> {
-        self.ty
-    }
-}
-
-impl<'i> Display for BinaryExpr<'i> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "({} {} {})",
-            self.operands.lhs, self.operator, self.operands.rhs
-        )
-    }
-}
-
-//
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BinaryExprType {
-    pub operator: BinaryOp,
-    pub operands: Box<Sides<Type>>,
-}
-
-impl BinaryExprType {
-    pub fn new(lhs: Type, op: BinaryOp, rhs: Type) -> Self {
-        Self {
-            operator: op,
-            operands: Box::new(Sides { lhs, rhs }),
-        }
-    }
-}
-
-impl Generic for BinaryExprType {
-    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
-        match (self.operands.lhs, self.operator, self.operands.rhs) {
+        let ty = match (lhs, op, rhs) {
             // boolean ops
             (
                 a,
@@ -205,6 +166,24 @@ impl Generic for BinaryExprType {
                 op,
                 rhs,
             )),
-        }
+        }?;
+        log::debug!("{lhs} {op} {rhs} = {ty}");
+        self.ty = Some(ty);
+
+        Ok(())
+    }
+
+    fn type_of_impl(&self) -> Option<Type> {
+        self.ty
+    }
+}
+
+impl<'i> Display for BinaryExpr<'i> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({} {} {})",
+            self.operands.lhs, self.operator, self.operands.rhs
+        )
     }
 }

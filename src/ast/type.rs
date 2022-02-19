@@ -1,10 +1,13 @@
-use super::{Ast, Generic, GenericSolver, Result, Rule, TypeOf, VisibleVars};
+use super::{Ast, Result, Rule, TypeOf, VisibleVars};
 use crate::ast::match_rule;
 use pest::{iterators::Pair, Span};
 use std::{
+    any::TypeId,
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Lit {
@@ -15,7 +18,7 @@ pub enum Lit {
 }
 
 impl<'i> TypeOf<'i> for Lit {
-    fn type_check_impl(&mut self, _: &mut VisibleVars, _: &mut GenericSolver<'i>) -> Result<()> {
+    fn type_check_impl(&mut self, _: &mut VisibleVars) -> Result<()> {
         Ok(())
     }
 
@@ -50,14 +53,22 @@ pub enum Type {
     /// `()`
     Unit,
 
+    /// `unresolved type`
     Unresolved,
-    /* /// `unresolved type`
-    Generic(u64), */
 }
 
-impl Generic for Type {
-    fn eval(self, _: &mut GenericSolver) -> Result<Type> {
-        Ok(self)
+//
+
+impl Type {
+    pub fn matches<T: 'static>(self) -> bool {
+        match self {
+            Type::F64 => TypeId::of::<T>() == TypeId::of::<f64>(),
+            Type::I64 => TypeId::of::<T>() == TypeId::of::<i64>(),
+            Type::U64 => TypeId::of::<T>() == TypeId::of::<u64>(),
+            Type::Bool => TypeId::of::<T>() == TypeId::of::<bool>(),
+            Type::Unit => TypeId::of::<T>() == TypeId::of::<()>(),
+            Type::Unresolved => false,
+        }
     }
 }
 

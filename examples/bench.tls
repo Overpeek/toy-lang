@@ -1,0 +1,9 @@
+fn fib_rec(x) {
+	if (x == 0) || (x == 1) {
+		x
+	} else {
+		fib_rec(x - 1) + fib_rec(x - 2)
+	}
+}
+
+fib_rec(16.0)

@@ -1,6 +1,5 @@
 use super::{
-    match_rule, Ast, BinaryExpr, GenericSolver, Result, Rule, Term, Type, TypeOf, UnaryExpr,
-    VisibleVars,
+    match_rule, Ast, BinaryExpr, Result, Rule, Term, Type, TypeOf, UnaryExpr, VisibleVars,
 };
 use lazy_static::lazy_static;
 use pest::{
@@ -101,18 +100,14 @@ impl<'i> Ast<'i> for Expr<'i> {
 }
 
 impl<'i> TypeOf<'i> for Expr<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         let internal = match self.internal.as_mut() {
             ExprInternal::BinaryExpr(expr) => expr as &mut dyn TypeOf,
             ExprInternal::UnaryExpr(expr) => expr as _,
             ExprInternal::Term(term) => term as _,
         };
 
-        internal.type_check(vars, solver)?;
+        internal.type_check(vars)?;
         self.ty = Some(internal.type_of());
 
         Ok(())

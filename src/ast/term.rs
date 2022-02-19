@@ -1,10 +1,9 @@
+use super::{Access, Ast, Branch, Call, Expr, Result, Rule, Type, TypeOf, VisibleVars};
 use crate::ast::{match_rule, Lit};
-
-use super::{
-    Access, Ast, Branch, Call, Expr, GenericSolver, Result, Rule, Type, TypeOf, VisibleVars,
-};
 use pest::{iterators::Pair, Span};
 use std::fmt::{Debug, Display};
+
+//
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermInternal<'i> {
@@ -22,6 +21,8 @@ pub struct Term<'i> {
     span: Span<'i>,
     ty: Option<Type>,
 }
+
+//
 
 impl<'i> Ast<'i> for Term<'i> {
     fn span(&self) -> Span<'i> {
@@ -54,11 +55,7 @@ impl<'i> Ast<'i> for Term<'i> {
 }
 
 impl<'i> TypeOf<'i> for Term<'i> {
-    fn type_check_impl(
-        &mut self,
-        vars: &mut VisibleVars,
-        solver: &mut GenericSolver<'i>,
-    ) -> Result<()> {
+    fn type_check_impl(&mut self, vars: &mut VisibleVars<'i>) -> Result<()> {
         let internal = match self.internal.as_mut() {
             TermInternal::Lit(v) => v as &mut dyn TypeOf<'i>,
             TermInternal::Expr(v) => v as _,
@@ -67,7 +64,7 @@ impl<'i> TypeOf<'i> for Term<'i> {
             TermInternal::Call(v) => v as _,
         };
 
-        internal.type_check(vars, solver)?;
+        internal.type_check(vars)?;
         self.ty = Some(internal.type_of());
 
         Ok(())
