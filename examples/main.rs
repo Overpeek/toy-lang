@@ -8,12 +8,16 @@ pub fn main() {
     let result: f64 = compiler
         .module_from_source(
             r#"
-			fn x() -> f64 {
-				5.0
-			}
-
-			4.4 * x()
-		"#,
+                if false {
+                    5.0
+                } else {
+                    if true {
+                        2.0
+                    } else {
+                        1.0
+                    }
+                }
+		    "#,
         )
         .unwrap()
         .exec()

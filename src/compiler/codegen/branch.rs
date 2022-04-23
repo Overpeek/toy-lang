@@ -26,8 +26,10 @@ impl<'i> CodeGen for ast::Branch<'i> {
         let cond = self.internal.test.code_gen(module)?.expect_bool()?;
         // let const_zero = module.context.f64_type().const_zero();
         let function = module.function.clone();
-        let function = function.borrow();
-        let function = function.as_ref().expect("Branch outside of any function?");
+        let function_ref = function.borrow();
+        let function = function_ref
+            .as_ref()
+            .expect("Branch outside of any function?");
 
         let id = module.label_id;
         module.label_id += 1;
@@ -45,16 +47,19 @@ impl<'i> CodeGen for ast::Branch<'i> {
             .context
             .append_basic_block(function.proto, &format!("Branch continue {id}"));
 
+        drop(function_ref);
         module.builder.build_conditional_branch(cond, a, b);
 
         // on_true block
         module.builder.position_at_end(a);
         let result_a = self.internal.on_true.code_gen(module)?;
+        let a = module.builder.get_insert_block().unwrap(); // because the result_a codegen can make new blocks, we need to get the 'last' one
         module.builder.build_unconditional_branch(r#continue);
 
         // on_false block
         module.builder.position_at_end(b);
         let result_b = self.internal.on_false.code_gen(module)?;
+        let b = module.builder.get_insert_block().unwrap(); // because the result_b codegen can make new blocks, we need to get the 'last' one
         module.builder.build_unconditional_branch(r#continue);
 
         // continue block
